@@ -1,0 +1,1 @@
+console.log("Bookmark Notes extension loaded");

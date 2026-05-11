@@ -1,0 +1,19 @@
+{
+  "manifest_version": 3,
+  "name": "Bookmark Notes",
+  "version": "1.0",
+  "permissions": [
+    "storage",
+    "tabs",
+    "sidePanel"
+  ],
+  "background": {
+    "service_worker": "background/service-worker.js"
+  },
+  "side_panel": {
+  "default_path": "sidepanel/dist/index.html"
+  },
+  "action": {
+    "default_popup": "popup/popup.html"
+  }
+}
