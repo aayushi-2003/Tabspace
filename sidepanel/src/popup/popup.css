@@ -1,0 +1,182 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  background: #07122b;
+  color: white;
+  font-family: "Noto Sans", Arial, sans-serif;
+  margin: 0;
+  width: 320px;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+.popup-shell {
+  padding: 16px;
+}
+
+.popup-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+  text-align: left;
+}
+
+.logo-box {
+  width: 42px;
+  height: 42px;
+  background: #6a31cb;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+}
+
+.popup-brand h1 {
+  font-size: 16px;
+  line-height: 1.2;
+  margin: 0;
+}
+
+.popup-brand p {
+  color: #94a3b8;
+  font-size: 12px;
+  margin: 3px 0 0;
+}
+
+.auth-card,
+.account-card {
+  background: #1a2744;
+  border: 1px solid #32405f;
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+}
+
+.auth-tabs {
+  background: #101d39;
+  border: 1px solid #32405f;
+  border-radius: 8px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  padding: 4px;
+}
+
+.auth-tabs button {
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  color: #a8b3cf;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px;
+}
+
+.auth-tabs .active-tab {
+  background: #1a2744;
+  color: white;
+}
+
+.input-row {
+  background: #101d39;
+  border: 1px solid #32405f;
+  border-radius: 8px;
+  color: #a8b3cf;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 10px;
+}
+
+.input-row input {
+  width: 100%;
+  background: transparent;
+  border: none;
+  color: white;
+  outline: none;
+}
+
+.input-row input::placeholder {
+  color: #7f8ba8;
+}
+
+.primary-btn,
+.ghost-btn,
+.sync-btn {
+  width: 100%;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 700;
+  padding: 12px;
+}
+
+.primary-btn {
+  background: #6a31cb;
+  color: white;
+}
+
+.ghost-btn {
+  background: #102041;
+  border: 1px solid #32405f;
+  color: #d4dcf2;
+}
+
+.sync-btn {
+  background: #102041;
+  border: 1px solid #32405f;
+  color: white;
+}
+
+.sync-btn:hover,
+.ghost-btn:hover {
+  border-color: #6a31cb;
+}
+
+.primary-btn:disabled,
+.ghost-btn:disabled,
+.sync-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+.eyebrow {
+  color: #94a3b8;
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  margin-bottom: 3px;
+  text-transform: uppercase;
+}
+
+.account-email {
+  font-size: 13px;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.status-text {
+  color: #b8c0d9;
+  font-size: 12px;
+  line-height: 1.4;
+  margin: 12px 2px 0;
+  text-align: left;
+}

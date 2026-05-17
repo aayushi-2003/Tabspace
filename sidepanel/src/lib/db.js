@@ -57,7 +57,7 @@ async function writeWorkspaces(url, workspaces) {
   );
 }
 
-function getDomainFromUrl(url) {
+export function getDomainFromUrl(url) {
   try {
     return new URL(url).hostname.replace("www.", "");
   } catch {

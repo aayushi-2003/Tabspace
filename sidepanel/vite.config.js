@@ -6,6 +6,12 @@ export default defineConfig({
   base: './',   
   build: {
     outDir: 'dist',
-    emptyOutDir: true
+    emptyOutDir: true,
+    rollupOptions: {
+      input: {
+        sidepanel: 'index.html',
+        popup: 'popup.html'
+      }
+    }
   }
 })

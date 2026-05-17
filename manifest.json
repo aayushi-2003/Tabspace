@@ -14,6 +14,6 @@
   "default_path": "sidepanel/dist/index.html"
   },
   "action": {
-    "default_popup": "popup/popup.html"
+    "default_popup": "sidepanel/dist/popup.html"
   }
 }
