@@ -73,6 +73,10 @@ export async function getWorkspaces(url) {
   return readWorkspaces(url);
 }
 
+export async function setWorkspaces(url, workspaces) {
+  await writeWorkspaces(url, workspaces);
+}
+
 export async function getAllWorkspaces() {
   if (hasChromeExtensionApis()) {
     const storageData = await globalThis.chrome.storage.local.get(null);
@@ -168,7 +172,9 @@ export async function createWorkspace(url, pageTitle) {
 
     todos: [],
 
-    createdAt: new Date().toISOString()
+    createdAt: new Date().toISOString(),
+
+    updatedAt: new Date().toISOString()
   };
 
   workspaces.unshift(newWorkspace);

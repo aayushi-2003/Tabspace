@@ -9,11 +9,53 @@ import {
 import {
   getCurrentSession,
   onAuthStateChange,
+  sendPasswordResetEmail,
   signInWithEmail,
   signOut,
   signUpWithEmail
 } from "../lib/auth";
-import { syncLocalWorkspacesToSupabase } from "../lib/sync";
+import {
+  syncBothWays
+} from "../lib/sync";
+
+const LAST_SYNC_KEY = "bookmark-notes:last-sync-at";
+
+const hasChromeStorage = () =>
+  typeof globalThis.chrome !== "undefined" &&
+  Boolean(globalThis.chrome.storage?.local);
+
+async function getLastSyncAt() {
+  if (hasChromeStorage()) {
+    const result = await globalThis.chrome.storage.local.get([LAST_SYNC_KEY]);
+
+    return result[LAST_SYNC_KEY] || "";
+  }
+
+  return localStorage.getItem(LAST_SYNC_KEY) || "";
+}
+
+async function setLastSyncAt(value) {
+  if (hasChromeStorage()) {
+    await globalThis.chrome.storage.local.set({
+      [LAST_SYNC_KEY]: value
+    });
+
+    return;
+  }
+
+  localStorage.setItem(LAST_SYNC_KEY, value);
+}
+
+function formatLastSyncAt(value) {
+  if (!value) {
+    return "Never synced";
+  }
+
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short"
+  }).format(new Date(value));
+}
 
 function Popup() {
   const [session, setSession] = useState(null);
@@ -23,6 +65,7 @@ function Popup() {
   const [status, setStatus] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [lastSyncAt, setLastSyncAtState] = useState("");
 
   useEffect(() => {
     let isMounted = true;
@@ -43,6 +86,12 @@ function Popup() {
 
         setIsLoading(false);
       });
+
+    getLastSyncAt().then((value) => {
+      if (!isMounted) return;
+
+      setLastSyncAtState(value);
+    });
 
     const subscription = onAuthStateChange((currentSession) => {
       setSession(currentSession);
@@ -71,6 +120,12 @@ function Popup() {
     setIsLoading(true);
 
     try {
+      if (authMode === "reset") {
+        await sendPasswordResetEmail(email);
+        setStatus("Password reset email sent.");
+        return;
+      }
+
       const nextSession =
         authMode === "sign-in"
           ? await signInWithEmail(email, password)
@@ -105,6 +160,16 @@ function Popup() {
     }
   };
 
+  const notifySidepanelRefresh = () => {
+    if (!globalThis.chrome?.runtime?.sendMessage) {
+      return;
+    }
+
+    globalThis.chrome.runtime.sendMessage({
+      type: "bookmark-notes:storage-updated"
+    });
+  };
+
   const handleSyncNow = async () => {
     if (!session) return;
 
@@ -112,14 +177,15 @@ function Popup() {
     setIsSyncing(true);
 
     try {
-      const result = await syncLocalWorkspacesToSupabase(session);
+      const result = await syncBothWays(session);
+      const syncedAt = new Date().toISOString();
+
+      await setLastSyncAt(syncedAt);
+      setLastSyncAtState(syncedAt);
+      notifySidepanelRefresh();
 
       setStatus(
-        result.count === 0
-          ? "No local workspaces to sync yet."
-          : `Synced ${result.count} local workspace${
-              result.count === 1 ? "" : "s"
-            } to Supabase.`
+        `Synced ${result.uploaded} up, restored ${result.restored} down.`
       );
     } catch (error) {
       setStatus(error.message);
@@ -146,6 +212,9 @@ function Popup() {
             <p className="account-email">
               {session.user.email}
             </p>
+            <p className="sync-meta">
+              Last sync: {formatLastSyncAt(lastSyncAt)}
+            </p>
           </div>
 
           <button
@@ -164,7 +233,7 @@ function Popup() {
             disabled={isSyncing || isLoading}
           >
             <FiRefreshCw />
-            {isSyncing ? "Syncing..." : "Sync now"}
+            {isSyncing ? "Syncing..." : "Sync"}
           </button>
 
           <button
@@ -209,22 +278,24 @@ function Popup() {
             />
           </label>
 
-          <label className="input-row">
-            <FiLock />
-            <input
-              autoComplete={
-                authMode === "sign-in"
-                  ? "current-password"
-                  : "new-password"
-              }
-              minLength={6}
-              onChange={(event) => setPassword(event.target.value)}
-              placeholder="Password"
-              type="password"
-              value={password}
-              required
-            />
-          </label>
+          {authMode !== "reset" && (
+            <label className="input-row">
+              <FiLock />
+              <input
+                autoComplete={
+                  authMode === "sign-in"
+                    ? "current-password"
+                    : "new-password"
+                }
+                minLength={6}
+                onChange={(event) => setPassword(event.target.value)}
+                placeholder="Password"
+                type="password"
+                value={password}
+                required
+              />
+            </label>
+          )}
 
           <button
             className="primary-btn"
@@ -233,9 +304,26 @@ function Popup() {
           >
             {isLoading
               ? "Please wait..."
-              : authMode === "sign-in"
+              : authMode === "reset"
+                ? "Send reset email"
+                : authMode === "sign-in"
                 ? "Sign in"
                 : "Create account"}
+          </button>
+
+          <button
+            className="text-btn"
+            onClick={() => {
+              setStatus("");
+              setAuthMode(
+                authMode === "reset" ? "sign-in" : "reset"
+              );
+            }}
+            type="button"
+          >
+            {authMode === "reset"
+              ? "Back to sign in"
+              : "Forgot password?"}
           </button>
         </form>
       )}

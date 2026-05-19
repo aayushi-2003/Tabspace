@@ -112,7 +112,8 @@ input {
 
 .primary-btn,
 .ghost-btn,
-.sync-btn {
+.sync-btn,
+.text-btn {
   width: 100%;
   border: none;
   border-radius: 8px;
@@ -143,9 +144,18 @@ input {
   color: white;
 }
 
+.text-btn {
+  background: transparent;
+  color: #b8c0d9;
+  font-size: 13px;
+  padding: 4px;
+}
+
 .sync-btn:hover,
-.ghost-btn:hover {
+.ghost-btn:hover,
+.text-btn:hover {
   border-color: #6a31cb;
+  color: white;
 }
 
 .primary-btn:disabled,
@@ -171,6 +181,12 @@ input {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.sync-meta {
+  color: #94a3b8;
+  font-size: 12px;
+  margin: 5px 0 0;
 }
 
 .status-text {

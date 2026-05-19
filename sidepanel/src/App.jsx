@@ -13,6 +13,14 @@ import {
   updateWorkspace,
   deleteWorkspace
 } from "./lib/db";
+import {
+  getCurrentSession,
+  onAuthStateChange
+} from "./lib/auth";
+import {
+  deleteWorkspaceFromSupabase,
+  syncWorkspaceToSupabase
+} from "./lib/sync";
 
 import {
   FiArrowLeft,
@@ -86,7 +94,9 @@ function App() {
   const [workspaceMode, setWorkspaceMode] = useState("current");
   const [expandedDomains, setExpandedDomains] = useState({});
 
-  const [saveStatus, setSaveStatus] = useState("Saved");
+  const [session, setSession] = useState(null);
+
+  const [saveStatus, setSaveStatus] = useState("Saved locally");
   const saveTimersRef = useRef({});
   const pendingSaveIdsRef = useRef(new Set());
 
@@ -151,7 +161,10 @@ function App() {
       const updated = data.find((w) => w.id === selectedWorkspace.id);
 
       if (updated) {
-        setSelectedWorkspace(updated);
+        setSelectedWorkspace({
+          ...updated,
+          pageUrl: tabData.url
+        });
       }
     }
   };
@@ -160,6 +173,45 @@ function App() {
     const data = await getAllWorkspaces();
 
     setAllWorkspaces(data);
+  };
+
+  const refreshSidepanelData = async () => {
+    const currentTab = await getCurrentTabData();
+    const data = await getWorkspaces(currentTab.url);
+    const allData = await getAllWorkspaces();
+
+    setTabData(currentTab);
+    setWorkspaces(data);
+    setAllWorkspaces(allData);
+    setExpandedDomains(
+      groupWorkspacesByDomain(allData).reduce(
+        (domains, group) => ({
+          ...domains,
+          [group.domain]:
+            expandedDomains[group.domain] ?? true
+        }),
+        {}
+      )
+    );
+
+    if (selectedWorkspace) {
+      const workspacePageUrl =
+        selectedWorkspace.pageUrl || currentTab.url;
+      const refreshedWorkspace = allData.find(
+        (workspace) =>
+          workspace.id === selectedWorkspace.id &&
+          workspace.pageUrl === workspacePageUrl
+      );
+
+      if (refreshedWorkspace) {
+        setSelectedWorkspace(refreshedWorkspace);
+      }
+    } else if (data.length > 0) {
+      setSelectedWorkspace({
+        ...data[0],
+        pageUrl: currentTab.url
+      });
+    }
   };
 
   const handleCreateWorkspace = async () => {
@@ -174,21 +226,29 @@ function App() {
 
     await refreshAllWorkspaces();
 
-    setSelectedWorkspace({
+    const createdWorkspace = {
       ...workspace,
       pageUrl: tabData.url
-    });
+    };
+
+    setSelectedWorkspace(createdWorkspace);
+
+    if (session) {
+      await syncWorkspaceToSupabase(session, createdWorkspace);
+    }
+
     setView("detail");
   };
 
   const handleUpdateWorkspace = async (updates) => {
     if (!selectedWorkspace) return;
 
-    setSaveStatus("Saving...");
+    setSaveStatus("Saving locally...");
 
     const updated = {
       ...selectedWorkspace,
-      ...updates
+      ...updates,
+      updatedAt: new Date().toISOString()
     };
 
     setSelectedWorkspace(updated);
@@ -208,21 +268,38 @@ function App() {
     pendingSaveIdsRef.current.add(updated.id);
 
     saveTimersRef.current[updated.id] = setTimeout(async () => {
-      await updateWorkspace(
-        updated.id,
-        updated,
-        updated.pageUrl || tabData.url
-      );
+      let localSaveSucceeded = false;
 
-      delete saveTimersRef.current[updated.id];
-      pendingSaveIdsRef.current.delete(updated.id);
+      try {
+        await updateWorkspace(
+          updated.id,
+          updated,
+          updated.pageUrl || tabData.url
+        );
 
-      if (pendingSaveIdsRef.current.size === 0) {
-        setSaveStatus("Saved");
+        localSaveSucceeded = true;
+
+        if (session) {
+          setSaveStatus("Syncing cloud...");
+          await syncWorkspaceToSupabase(session, updated);
+          setSaveStatus("Synced");
+        } else {
+          setSaveStatus("Saved locally");
+        }
+
+        await refreshWorkspaces();
+        await refreshAllWorkspaces();
+      } catch (error) {
+        console.error(error);
+        setSaveStatus(
+          localSaveSucceeded
+            ? "Saved locally - cloud sync failed"
+            : "Save failed"
+        );
+      } finally {
+        delete saveTimersRef.current[updated.id];
+        pendingSaveIdsRef.current.delete(updated.id);
       }
-
-      await refreshWorkspaces();
-      await refreshAllWorkspaces();
     }, 650);
   };
 
@@ -241,7 +318,7 @@ function App() {
       pendingSaveIdsRef.current.delete(workspaceToDelete.id);
 
       if (pendingSaveIdsRef.current.size === 0) {
-        setSaveStatus("Saved");
+        setSaveStatus(session ? "Synced" : "Saved locally");
       }
     }
 
@@ -249,6 +326,10 @@ function App() {
       workspaceToDelete.id,
       workspaceToDelete.pageUrl || tabData.url
     );
+
+    if (session) {
+      await deleteWorkspaceFromSupabase(session, workspaceToDelete);
+    }
 
     const updated =
       (workspaceToDelete.pageUrl || tabData.url) === tabData.url
@@ -270,7 +351,7 @@ function App() {
 
   const openWorkspace = (workspace) => {
     setSelectedWorkspace(workspace);
-    setSaveStatus("Saved");
+    setSaveStatus(session ? "Synced" : "Saved locally");
     setView("detail");
   };
 
@@ -397,6 +478,47 @@ function App() {
       );
     };
   }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    getCurrentSession()
+      .then((currentSession) => {
+        if (!isMounted) return;
+
+        setSession(currentSession);
+      })
+      .catch((error) => {
+        console.error(error);
+      });
+
+    const subscription = onAuthStateChange((currentSession) => {
+      setSession(currentSession);
+    });
+
+    return () => {
+      isMounted = false;
+      subscription.unsubscribe();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!globalThis.chrome?.runtime?.onMessage) {
+      return undefined;
+    }
+
+    const handleMessage = (message) => {
+      if (message?.type === "bookmark-notes:storage-updated") {
+        refreshSidepanelData();
+      }
+    };
+
+    globalThis.chrome.runtime.onMessage.addListener(handleMessage);
+
+    return () => {
+      globalThis.chrome.runtime.onMessage.removeListener(handleMessage);
+    };
+  });
 
   if (loadError) {
     return <div className="loading">{loadError}</div>;
