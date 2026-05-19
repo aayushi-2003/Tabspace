@@ -1,6 +1,6 @@
 const DEV_TAB_DATA = {
   url: "https://example.com/dev-preview",
-  title: "Bookmark Notes Preview"
+  title: "Tabspace Preview"
 };
 
 const hasChromeExtensionApis = () =>
@@ -27,7 +27,7 @@ async function getActiveTab() {
 }
 
 function getDevStorageKey(url) {
-  return `bookmark-notes:${url}`;
+  return `tabspace:${url}`;
 }
 
 async function readWorkspaces(url) {
@@ -85,11 +85,11 @@ export async function getAllWorkspaces() {
   }
 
   const storageData = Object.keys(localStorage).reduce((data, key) => {
-    if (!key.startsWith("bookmark-notes:")) {
+    if (!key.startsWith("tabspace:")) {
       return data;
     }
 
-    const url = key.replace("bookmark-notes:", "");
+    const url = key.replace("tabspace:", "");
     const saved = localStorage.getItem(key);
 
     return {

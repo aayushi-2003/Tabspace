@@ -18,7 +18,7 @@ import {
   syncBothWays
 } from "../lib/sync";
 
-const LAST_SYNC_KEY = "bookmark-notes:last-sync-at";
+const LAST_SYNC_KEY = "tabspace:last-sync-at";
 
 const hasChromeStorage = () =>
   typeof globalThis.chrome !== "undefined" &&
@@ -166,7 +166,7 @@ function Popup() {
     }
 
     globalThis.chrome.runtime.sendMessage({
-      type: "bookmark-notes:storage-updated"
+      type: "tabspace:storage-updated"
     });
   };
 
@@ -200,7 +200,7 @@ function Popup() {
         <div className="logo-box">B</div>
 
         <div>
-          <h1>Bookmark Notes</h1>
+          <h1>Tabspace</h1>
           <p>Quick workspace access</p>
         </div>
       </section>

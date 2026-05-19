@@ -1,1 +1,1 @@
-console.log("Bookmark Notes extension loaded");
+console.log("Tabspace extension loaded");

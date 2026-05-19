@@ -508,7 +508,7 @@ function App() {
     }
 
     const handleMessage = (message) => {
-      if (message?.type === "bookmark-notes:storage-updated") {
+      if (message?.type === "tabspace:storage-updated") {
         refreshSidepanelData();
       }
     };

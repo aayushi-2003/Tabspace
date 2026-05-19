@@ -1,6 +1,6 @@
-# Bookmark Notes
+# Tabspace
 
-Bookmark Notes is an in-progress Chrome Extension for turning any webpage into a small contextual workspace.
+Tabspace is an in-progress Chrome Extension for turning any webpage into a small contextual workspace.
 
 The goal is to make a lightweight productivity sidepanel where users can create notes, todos, and workspaces tied to the pages they are browsing. It is designed as a compact Notion-style tool for research, learning, bookmarking, and task tracking directly inside Chrome.
 
