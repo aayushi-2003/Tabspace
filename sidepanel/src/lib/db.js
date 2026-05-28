@@ -133,10 +133,12 @@ export function groupWorkspacesByDomain(workspaces) {
       domain,
       workspaceCount: 0,
       todoCount: 0,
+      doneTodoCount: 0,
       workspaces: []
     };
 
     const todos = workspace.todos || [];
+    const doneTodos = todos.filter((todo) => todo.done).length;
 
     return {
       ...domainGroups,
@@ -144,6 +146,7 @@ export function groupWorkspacesByDomain(workspaces) {
         ...existingGroup,
         workspaceCount: existingGroup.workspaceCount + 1,
         todoCount: existingGroup.todoCount + todos.length,
+        doneTodoCount: existingGroup.doneTodoCount + doneTodos,
         workspaces: [...existingGroup.workspaces, workspace]
       }
     };

@@ -36,7 +36,16 @@ import {
   FiStar,
   FiZap,
   FiCode,
-  FiHeart
+  FiHeart,
+  FiBold,
+  FiItalic,
+  FiUnderline,
+  FiList,
+  FiHash,
+  FiAlignLeft,
+  FiAlignCenter,
+  FiAlignRight,
+  FiSettings
 } from "react-icons/fi";
 
 import "./App.css";
@@ -82,6 +91,72 @@ function getWorkspaceColorClass(color) {
   return `workspace-color-${colorIndex >= 0 ? colorIndex : 0}`;
 }
 
+function getTodoProgress(todos = []) {
+  const total = todos.length;
+  const done = todos.filter((todo) => todo.done).length;
+
+  if (!total) {
+    return {
+      done,
+      total,
+      label: "No todos"
+    };
+  }
+
+  return {
+    done,
+    total,
+    label: `${done}/${total} done`
+  };
+}
+
+function getNotePreview(note = "") {
+  const plainText = (() => {
+    if (typeof document === "undefined") {
+      return note.replace(/<[^>]+>/g, "");
+    }
+
+    const container = document.createElement("div");
+    container.innerHTML = note;
+
+    return container.textContent || "";
+  })();
+
+  const preview = plainText
+    .replace(/[#*_`~>-]/g, "")
+    .split("\n")
+    .map((line) => line.trim())
+    .find(Boolean);
+
+  return preview || "";
+}
+
+function escapeHtml(value) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function isSelectionInsideCodeSnippet(editor, selection) {
+  if (!selection || selection.rangeCount === 0) {
+    return false;
+  }
+
+  const range = selection.getRangeAt(0);
+  const container = range.commonAncestorContainer;
+  const element =
+    container.nodeType === Node.ELEMENT_NODE
+      ? container
+      : container.parentElement;
+
+  return Boolean(
+    element?.closest("pre, code") &&
+      editor.contains(element.closest("pre, code"))
+  );
+}
+
 function App() {
   const [tabData, setTabData] = useState(null);
   const [loadError, setLoadError] = useState("");
@@ -93,12 +168,14 @@ function App() {
   const [view, setView] = useState("list");
   const [workspaceMode, setWorkspaceMode] = useState("current");
   const [expandedDomains, setExpandedDomains] = useState({});
+  const [isCustomizeOpen, setIsCustomizeOpen] = useState(false);
 
   const [session, setSession] = useState(null);
 
   const [saveStatus, setSaveStatus] = useState("Saved locally");
   const saveTimersRef = useRef({});
   const pendingSaveIdsRef = useRef(new Set());
+  const notesEditorRef = useRef(null);
 
   const [newTodo, setNewTodo] = useState("");
   const [workspaceSearch, setWorkspaceSearch] = useState("");
@@ -352,10 +429,12 @@ function App() {
   const openWorkspace = (workspace) => {
     setSelectedWorkspace(workspace);
     setSaveStatus(session ? "Synced" : "Saved locally");
+    setIsCustomizeOpen(false);
     setView("detail");
   };
 
   const goBackToWorkspaces = () => {
+    setIsCustomizeOpen(false);
     setView("list");
   };
 
@@ -404,6 +483,27 @@ function App() {
     await handleUpdateWorkspace({ todos });
   };
 
+  const updateTodoText = async (index, text) => {
+    const todos = selectedWorkspace.todos.map((todo, todoIndex) =>
+      todoIndex === index
+        ? {
+            ...todo,
+            text
+          }
+        : todo
+    );
+
+    await handleUpdateWorkspace({ todos });
+  };
+
+  const normalizeTodoText = async (index, text) => {
+    const normalizedText = text.trim() || "Untitled todo";
+
+    if (normalizedText !== text) {
+      await updateTodoText(index, normalizedText);
+    }
+  };
+
   const reorderTodos = async (result) => {
     if (!result.destination || !selectedWorkspace) return;
 
@@ -427,6 +527,58 @@ function App() {
     if (e.key === "Enter") {
       addTodo();
     }
+  };
+
+  const saveNoteFromEditor = () => {
+    if (!notesEditorRef.current) return;
+
+    handleUpdateWorkspace({
+      note: notesEditorRef.current.innerHTML
+    });
+  };
+
+  const cleanEmptyNote = () => {
+    if (!notesEditorRef.current) return;
+
+    if (!notesEditorRef.current.textContent.trim()) {
+      notesEditorRef.current.innerHTML = "";
+      saveNoteFromEditor();
+    }
+  };
+
+  const handleNotesPaste = (e) => {
+    e.preventDefault();
+
+    const text = e.clipboardData.getData("text/plain");
+
+    document.execCommand("insertText", false, text);
+    saveNoteFromEditor();
+  };
+
+  const applyRichTextCommand = (command) => {
+    if (!notesEditorRef.current) return;
+
+    notesEditorRef.current.focus();
+    document.execCommand(command, false, null);
+    saveNoteFromEditor();
+  };
+
+  const insertCodeSnippet = () => {
+    if (!notesEditorRef.current) return;
+
+    notesEditorRef.current.focus();
+
+    const selection = document.getSelection();
+
+    if (isSelectionInsideCodeSnippet(notesEditorRef.current, selection)) {
+      return;
+    }
+
+    const selectedText = selection?.toString().trim() || "code snippet";
+    const codeBlock = `<pre><code>${escapeHtml(selectedText)}</code></pre><p><br></p>`;
+
+    document.execCommand("insertHTML", false, codeBlock);
+    saveNoteFromEditor();
   };
 
   useEffect(() => {
@@ -519,6 +671,26 @@ function App() {
       globalThis.chrome.runtime.onMessage.removeListener(handleMessage);
     };
   });
+
+  useEffect(() => {
+    const editor = notesEditorRef.current;
+
+    if (!editor || !selectedWorkspace) {
+      return;
+    }
+
+    const isEditingCurrentWorkspace =
+      document.activeElement === editor &&
+      editor.dataset.workspaceId === selectedWorkspace.id;
+
+    if (isEditingCurrentWorkspace) {
+      return;
+    }
+
+    editor.innerHTML = selectedWorkspace.note || "";
+    editor.style.textAlign = "left";
+    editor.dataset.workspaceId = selectedWorkspace.id;
+  }, [selectedWorkspace]);
 
   if (loadError) {
     return <div className="loading">{loadError}</div>;
@@ -623,6 +795,8 @@ function App() {
                     ...workspace,
                     pageUrl: tabData.url
                   };
+                  const notePreview = getNotePreview(workspace.note);
+                  const todoProgress = getTodoProgress(workspace.todos);
 
                   return (
                     <div
@@ -648,9 +822,7 @@ function App() {
                         </div>
 
                         <div className="workspace-card-actions">
-                          <p>
-                            {workspace.todos?.length || 0} todos
-                          </p>
+                          <p>{todoProgress.label}</p>
 
                           <button
                             className="workspace-delete-btn"
@@ -664,6 +836,12 @@ function App() {
                           </button>
                         </div>
                       </div>
+
+                      {notePreview && (
+                        <p className="workspace-note-preview">
+                          {notePreview}
+                        </p>
+                      )}
                     </div>
                   );
                 })}
@@ -717,38 +895,52 @@ function App() {
                           ? "workspace"
                           : "workspaces"}
                         {" - "}
-                        {group.todoCount} todos
+                        {group.doneTodoCount}/{group.todoCount} done
                       </span>
                     </button>
 
                     {isExpanded && (
                       <div className="domain-workspaces">
-                        {group.workspaces.map((workspace) => (
-                          <div
-                            key={`${workspace.pageUrl}-${workspace.id}`}
-                            className={`domain-workspace-card ${getWorkspaceColorClass(
-                              workspace.color
-                            )}`}
-                            onClick={() => openWorkspace(workspace)}
-                          >
-                            <div className="workspace-card-name-icon">
-                              <span className="workspace-card-icon">
-                                <WorkspaceIconGlyph
-                                  iconId={workspace.icon}
-                                />
-                              </span>
+                        {group.workspaces.map((workspace) => {
+                          const notePreview = getNotePreview(
+                            workspace.note
+                          );
+                          const todoProgress = getTodoProgress(
+                            workspace.todos
+                          );
 
-                              <div className="domain-workspace-text">
-                                <h3>{workspace.title}</h3>
-                                <p>{workspace.pageUrl}</p>
+                          return (
+                            <div
+                              key={`${workspace.pageUrl}-${workspace.id}`}
+                              className={`domain-workspace-card ${getWorkspaceColorClass(
+                                workspace.color
+                              )}`}
+                              onClick={() => openWorkspace(workspace)}
+                            >
+                              <div className="workspace-card-name-icon">
+                                <span className="workspace-card-icon">
+                                  <WorkspaceIconGlyph
+                                    iconId={workspace.icon}
+                                  />
+                                </span>
+
+                                <div className="domain-workspace-text">
+                                  <h3>{workspace.title}</h3>
+                                  <p>{workspace.pageUrl}</p>
+                                  {notePreview && (
+                                    <p className="domain-note-preview">
+                                      {notePreview}
+                                    </p>
+                                  )}
+                                </div>
                               </div>
-                            </div>
 
-                            <span className="domain-workspace-count">
-                              {workspace.todos?.length || 0} todos
-                            </span>
-                          </div>
-                        ))}
+                              <span className="domain-workspace-count">
+                                {todoProgress.label}
+                              </span>
+                            </div>
+                          );
+                        })}
                       </div>
                     )}
                   </div>
@@ -809,9 +1001,21 @@ function App() {
               }
               placeholder="Workspace title"
             />
+
+            <button
+              className="customize-toggle-btn"
+              onClick={() =>
+                setIsCustomizeOpen((isOpen) => !isOpen)
+              }
+              title="Customize workspace"
+              aria-label="Customize workspace"
+            >
+              <FiSettings />
+            </button>
           </div>
 
-          <div className="workspace-customize">
+          {isCustomizeOpen && (
+          <div className="workspace-customize-panel">
             <div className="color-options">
               {WORKSPACE_COLORS.map((color) => (
                 <button
@@ -848,28 +1052,123 @@ function App() {
               ))}
             </div>
           </div>
+          )}
 
           <div className="notes-header">
             <h2>Notes</h2>
 
-            <span className="save-status">
-              {saveStatus}
-            </span>
+            <div className="notes-header-actions">
+              <span className="save-status">
+                {saveStatus}
+              </span>
+            </div>
           </div>
 
-          <textarea
-            className="notes-area"
-            value={selectedWorkspace.note}
-            onChange={(e) =>
-              handleUpdateWorkspace({
-                note: e.target.value
-              })
-            }
-            placeholder="Write your notes here..."
+          <div className="rich-text-toolbar">
+            <button
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => applyRichTextCommand("bold")}
+              title="Bold"
+              aria-label="Bold"
+            >
+              <FiBold />
+            </button>
+
+            <button
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => applyRichTextCommand("italic")}
+              title="Italic"
+              aria-label="Italic"
+            >
+              <FiItalic />
+            </button>
+
+            <button
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => applyRichTextCommand("underline")}
+              title="Underline"
+              aria-label="Underline"
+            >
+              <FiUnderline />
+            </button>
+
+            <button
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() =>
+                applyRichTextCommand("insertUnorderedList")
+              }
+              title="Bullet list"
+              aria-label="Bullet list"
+            >
+              <FiList />
+            </button>
+
+            <button
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() =>
+                applyRichTextCommand("insertOrderedList")
+              }
+              title="Numbered list"
+              aria-label="Numbered list"
+            >
+              <FiHash />
+            </button>
+
+            <button
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={insertCodeSnippet}
+              title="Code snippet"
+              aria-label="Code snippet"
+            >
+              <FiCode />
+            </button>
+
+            <span className="toolbar-divider" />
+
+            <button
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => applyRichTextCommand("justifyLeft")}
+              title="Align left"
+              aria-label="Align left"
+            >
+              <FiAlignLeft />
+            </button>
+
+            <button
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => applyRichTextCommand("justifyCenter")}
+              title="Align center"
+              aria-label="Align center"
+            >
+              <FiAlignCenter />
+            </button>
+
+            <button
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => applyRichTextCommand("justifyRight")}
+              title="Align right"
+              aria-label="Align right"
+            >
+              <FiAlignRight />
+            </button>
+          </div>
+
+          <div
+            ref={notesEditorRef}
+            className="notes-area rich-notes-area"
+            contentEditable
+            suppressContentEditableWarning
+            data-placeholder="Write your notes here..."
+            onInput={saveNoteFromEditor}
+            onBlur={cleanEmptyNote}
+            onPaste={handleNotesPaste}
           />
 
           <div className="todo-header">
             <h2>Todos</h2>
+            <span>
+              {getTodoProgress(selectedWorkspace.todos).label}
+            </span>
           </div>
 
           <div className="todo-input-row">
@@ -941,7 +1240,26 @@ function App() {
                               {todo.done && <FiCheck />}
                             </button>
 
-                            <span>{todo.text}</span>
+                            <input
+                              className="todo-text-input"
+                              value={todo.text}
+                              onChange={(e) =>
+                                updateTodoText(index, e.target.value)
+                              }
+                              onBlur={(e) =>
+                                normalizeTodoText(
+                                  index,
+                                  e.target.value
+                                )
+                              }
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") {
+                                  e.currentTarget.blur();
+                                }
+                              }}
+                              onPointerDown={(e) => e.stopPropagation()}
+                              aria-label="Todo text"
+                            />
 
                             <button
                               className="todo-delete"
