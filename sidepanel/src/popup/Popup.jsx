@@ -57,6 +57,16 @@ function formatLastSyncAt(value) {
   }).format(new Date(value));
 }
 
+function getPasswordResetRedirectUrl() {
+  if (globalThis.chrome?.runtime?.getURL) {
+    return globalThis.chrome.runtime.getURL(
+      "sidepanel/dist/reset-password.html"
+    );
+  }
+
+  return `${globalThis.location.origin}/reset-password.html`;
+}
+
 function Popup() {
   const [session, setSession] = useState(null);
   const [email, setEmail] = useState("");
@@ -121,7 +131,10 @@ function Popup() {
 
     try {
       if (authMode === "reset") {
-        await sendPasswordResetEmail(email);
+        await sendPasswordResetEmail(
+          email,
+          getPasswordResetRedirectUrl()
+        );
         setStatus("Password reset email sent.");
         return;
       }
@@ -185,7 +198,13 @@ function Popup() {
       notifySidepanelRefresh();
 
       setStatus(
-        `Synced ${result.uploaded} up, restored ${result.restored} down.`
+        `Synced ${result.uploaded} up, restored ${result.restored} down${
+          result.conflicts
+            ? `, resolved ${result.conflicts} conflict${
+                result.conflicts === 1 ? "" : "s"
+              }`
+            : ""
+        }.`
       );
     } catch (error) {
       setStatus(error.message);

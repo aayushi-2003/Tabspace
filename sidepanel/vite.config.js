@@ -10,7 +10,8 @@ export default defineConfig({
     rollupOptions: {
       input: {
         sidepanel: 'index.html',
-        popup: 'popup.html'
+        popup: 'popup.html',
+        resetPassword: 'reset-password.html'
       }
     }
   }

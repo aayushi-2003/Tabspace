@@ -38,15 +38,19 @@ const authStorage = {
   }
 };
 
-export const supabase = createClient(
-  import.meta.env.VITE_SUPABASE_URL,
-  import.meta.env.VITE_SUPABASE_ANON_KEY,
-  {
-    auth: {
-      autoRefreshToken: true,
-      detectSessionInUrl: false,
-      persistSession: true,
-      storage: authStorage
+export function createTabspaceSupabaseClient(options = {}) {
+  return createClient(
+    import.meta.env.VITE_SUPABASE_URL,
+    import.meta.env.VITE_SUPABASE_ANON_KEY,
+    {
+      auth: {
+        autoRefreshToken: true,
+        detectSessionInUrl: options.detectSessionInUrl ?? false,
+        persistSession: true,
+        storage: authStorage
+      }
     }
-  }
-);
+  );
+}
+
+export const supabase = createTabspaceSupabaseClient();

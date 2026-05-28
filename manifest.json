@@ -15,5 +15,16 @@
   },
   "action": {
     "default_popup": "sidepanel/dist/popup.html"
-  }
+  },
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "sidepanel/dist/reset-password.html",
+        "sidepanel/dist/assets/*"
+      ],
+      "matches": [
+        "<all_urls>"
+      ]
+    }
+  ]
 }

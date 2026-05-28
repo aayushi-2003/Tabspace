@@ -1,0 +1,56 @@
+.error-boundary {
+  min-height: 100vh;
+  background: #07122b;
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+  text-align: left;
+}
+
+.error-card {
+  width: min(420px, 100%);
+  background: #1a2744;
+  border: 1px solid #32405f;
+  border-radius: 10px;
+  padding: 18px;
+}
+
+.error-card h1 {
+  color: white;
+  font-size: 18px;
+  margin: 0 0 8px;
+}
+
+.error-card p {
+  color: #b8c0d9;
+  font-size: 13px;
+  line-height: 1.45;
+  margin: 0 0 12px;
+}
+
+.error-card pre {
+  max-height: 120px;
+  overflow: auto;
+  background: #101d39;
+  border: 1px solid #32405f;
+  border-radius: 8px;
+  color: #ffb4c0;
+  font-size: 12px;
+  margin: 0 0 12px;
+  padding: 10px;
+  white-space: pre-wrap;
+}
+
+.error-card button {
+  width: 100%;
+  background: #6a31cb;
+  border: none;
+  border-radius: 8px;
+  color: white;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 700;
+  padding: 12px;
+}

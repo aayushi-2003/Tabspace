@@ -6,9 +6,31 @@ import {
 } from "./db";
 import { supabase } from "./supabase";
 
+function getWorkspaceTimestamp(workspace) {
+  const timestamp = new Date(
+    workspace?.updatedAt ||
+      workspace?.updated_at ||
+      workspace?.createdAt ||
+      workspace?.created_at ||
+      0
+  ).getTime();
+
+  return Number.isNaN(timestamp) ? 0 : timestamp;
+}
+
+function getWorkspaceIsoTimestamp(workspace) {
+  return (
+    workspace.updatedAt ||
+    workspace.updated_at ||
+    workspace.createdAt ||
+    workspace.created_at ||
+    new Date().toISOString()
+  );
+}
+
 function mapWorkspaceToSupabaseRow(workspace, userId) {
   const pageUrl = workspace.pageUrl;
-  const updatedAt = workspace.updatedAt || new Date().toISOString();
+  const updatedAt = getWorkspaceIsoTimestamp(workspace);
 
   return {
     local_id: workspace.id,
@@ -25,10 +47,44 @@ function mapWorkspaceToSupabaseRow(workspace, userId) {
   };
 }
 
+async function getCloudWorkspace(session, workspace) {
+  const { data, error } = await supabase
+    .from("workspaces")
+    .select("local_id, updated_at")
+    .eq("user_id", session.user.id)
+    .eq("local_id", workspace.id)
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+
+  return data;
+}
+
+function assertLocalIsNotOlderThanCloud(localWorkspace, cloudWorkspace) {
+  if (!cloudWorkspace) {
+    return;
+  }
+
+  const localTimestamp = getWorkspaceTimestamp(localWorkspace);
+  const cloudTimestamp = getWorkspaceTimestamp(cloudWorkspace);
+
+  if (cloudTimestamp > localTimestamp) {
+    throw new Error(
+      "Cloud copy is newer. Run Sync before saving this workspace."
+    );
+  }
+}
+
 export async function syncWorkspaceToSupabase(session, workspace) {
   if (!session?.user?.id || !workspace?.pageUrl) {
     return;
   }
+
+  const cloudWorkspace = await getCloudWorkspace(session, workspace);
+
+  assertLocalIsNotOlderThanCloud(workspace, cloudWorkspace);
 
   const { error } = await supabase
     .from("workspaces")
@@ -103,18 +159,9 @@ function mapSupabaseRowToLocalWorkspace(row) {
   };
 }
 
-function getWorkspaceTimestamp(workspace) {
-  return new Date(
-    workspace.updatedAt ||
-      workspace.updated_at ||
-      workspace.createdAt ||
-      workspace.created_at ||
-      0
-  ).getTime();
-}
-
 function mergeWorkspaceLists(localWorkspaces, cloudWorkspaces) {
   const mergedById = new Map();
+  let conflictCount = 0;
 
   localWorkspaces.forEach((workspace) => {
     mergedById.set(workspace.id, workspace);
@@ -122,19 +169,29 @@ function mergeWorkspaceLists(localWorkspaces, cloudWorkspaces) {
 
   cloudWorkspaces.forEach((workspace) => {
     const existingWorkspace = mergedById.get(workspace.id);
+    const cloudTimestamp = getWorkspaceTimestamp(workspace);
+    const localTimestamp = getWorkspaceTimestamp(existingWorkspace || {});
 
-    if (
-      !existingWorkspace ||
-      getWorkspaceTimestamp(workspace) >=
-        getWorkspaceTimestamp(existingWorkspace)
-    ) {
+    if (!existingWorkspace) {
+      mergedById.set(workspace.id, workspace);
+      return;
+    }
+
+    if (cloudTimestamp !== localTimestamp) {
+      conflictCount += 1;
+    }
+
+    if (cloudTimestamp >= localTimestamp) {
       mergedById.set(workspace.id, workspace);
     }
   });
 
-  return Array.from(mergedById.values()).sort(
-    (a, b) => getWorkspaceTimestamp(b) - getWorkspaceTimestamp(a)
-  );
+  return {
+    conflictCount,
+    workspaces: Array.from(mergedById.values()).sort(
+      (a, b) => getWorkspaceTimestamp(b) - getWorkspaceTimestamp(a)
+    )
+  };
 }
 
 function groupRowsByPageUrl(rows) {
@@ -167,27 +224,32 @@ export async function restoreSupabaseWorkspacesToLocal(session) {
 
   if (!data?.length) {
     return {
+      conflicts: 0,
       count: 0
     };
   }
 
   const workspacesByPageUrl = groupRowsByPageUrl(data);
+  let conflictCount = 0;
 
   await Promise.all(
     Object.entries(workspacesByPageUrl).map(
       async ([pageUrl, cloudWorkspaces]) => {
         const localWorkspaces = await getWorkspaces(pageUrl);
-        const mergedWorkspaces = mergeWorkspaceLists(
+        const mergeResult = mergeWorkspaceLists(
           localWorkspaces,
           cloudWorkspaces
         );
 
-        await setWorkspaces(pageUrl, mergedWorkspaces);
+        conflictCount += mergeResult.conflictCount;
+
+        await setWorkspaces(pageUrl, mergeResult.workspaces);
       }
     )
   );
 
   return {
+    conflicts: conflictCount,
     count: data.length
   };
 }
@@ -197,6 +259,7 @@ export async function syncBothWays(session) {
   const uploadResult = await syncLocalWorkspacesToSupabase(session);
 
   return {
+    conflicts: restoreResult.conflicts,
     uploaded: uploadResult.count,
     restored: restoreResult.count
   };
