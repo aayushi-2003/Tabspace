@@ -28,11 +28,21 @@ function getWorkspaceIsoTimestamp(workspace) {
   );
 }
 
-function mapWorkspaceToSupabaseRow(workspace, userId) {
+function isMissingTagsColumnError(error) {
+  return (
+    error?.code === "PGRST204" &&
+    error?.message?.toLowerCase().includes("tags")
+  );
+}
+
+function mapWorkspaceToSupabaseRow(
+  workspace,
+  userId,
+  { includeTags = true } = {}
+) {
   const pageUrl = workspace.pageUrl;
   const updatedAt = getWorkspaceIsoTimestamp(workspace);
-
-  return {
+  const row = {
     local_id: workspace.id,
     user_id: userId,
     page_url: pageUrl,
@@ -45,6 +55,38 @@ function mapWorkspaceToSupabaseRow(workspace, userId) {
     created_at: workspace.createdAt || new Date().toISOString(),
     updated_at: updatedAt
   };
+
+  if (includeTags) {
+    row.tags = workspace.tags || [];
+  }
+
+  return row;
+}
+
+async function upsertWorkspaceRows(rows) {
+  const { error } = await supabase
+    .from("workspaces")
+    .upsert(rows, {
+      onConflict: "user_id,local_id"
+    });
+
+  if (!isMissingTagsColumnError(error)) {
+    return { error };
+  }
+
+  const rowsWithoutTags = rows.map((row) => {
+    const rowWithoutTags = { ...row };
+
+    delete rowWithoutTags.tags;
+
+    return rowWithoutTags;
+  });
+
+  return supabase
+    .from("workspaces")
+    .upsert(rowsWithoutTags, {
+      onConflict: "user_id,local_id"
+    });
 }
 
 async function getCloudWorkspace(session, workspace) {
@@ -86,11 +128,9 @@ export async function syncWorkspaceToSupabase(session, workspace) {
 
   assertLocalIsNotOlderThanCloud(workspace, cloudWorkspace);
 
-  const { error } = await supabase
-    .from("workspaces")
-    .upsert(mapWorkspaceToSupabaseRow(workspace, session.user.id), {
-      onConflict: "user_id,local_id"
-    });
+  const { error } = await upsertWorkspaceRows([
+    mapWorkspaceToSupabaseRow(workspace, session.user.id)
+  ]);
 
   if (error) {
     throw error;
@@ -130,11 +170,7 @@ export async function syncLocalWorkspacesToSupabase(session) {
     mapWorkspaceToSupabaseRow(workspace, session.user.id)
   );
 
-  const { error } = await supabase
-    .from("workspaces")
-    .upsert(rows, {
-      onConflict: "user_id,local_id"
-    });
+  const { error } = await upsertWorkspaceRows(rows);
 
   if (error) {
     throw error;
@@ -151,6 +187,7 @@ function mapSupabaseRowToLocalWorkspace(row) {
     title: row.title || "New Workspace",
     pageTitle: row.page_title || "",
     note: row.note || "",
+    tags: row.tags || [],
     todos: row.todos || [],
     color: row.color || "#7c3aed",
     icon: row.icon || "briefcase",

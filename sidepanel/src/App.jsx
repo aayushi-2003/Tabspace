@@ -19,6 +19,7 @@ import {
 } from "./lib/auth";
 import {
   deleteWorkspaceFromSupabase,
+  syncBothWays,
   syncWorkspaceToSupabase
 } from "./lib/sync";
 
@@ -30,7 +31,10 @@ import {
   FiTrash2,
   FiCheck,
   FiSearch,
+  FiRefreshCw,
   FiGlobe,
+  FiTag,
+  FiX,
   FiBriefcase,
   FiBookOpen,
   FiStar,
@@ -67,6 +71,8 @@ const WORKSPACE_ICONS = [
   { id: "code", Icon: FiCode },
   { id: "heart", Icon: FiHeart }
 ];
+
+const LAST_SYNC_KEY = "tabspace:last-sync-at";
 
 function WorkspaceIconGlyph({ iconId }) {
   switch (iconId) {
@@ -110,25 +116,101 @@ function getTodoProgress(todos = []) {
   };
 }
 
+function getPlainNoteText(note = "") {
+  if (typeof document === "undefined") {
+    return note.replace(/<[^>]+>/g, "");
+  }
+
+  const container = document.createElement("div");
+  container.innerHTML = note;
+
+  return container.textContent || "";
+}
+
+function getWorkspaceTags(workspace) {
+  return Array.isArray(workspace?.tags) ? workspace.tags : [];
+}
+
 function getNotePreview(note = "") {
-  const plainText = (() => {
-    if (typeof document === "undefined") {
-      return note.replace(/<[^>]+>/g, "");
-    }
-
-    const container = document.createElement("div");
-    container.innerHTML = note;
-
-    return container.textContent || "";
-  })();
-
-  const preview = plainText
+  const preview = getPlainNoteText(note)
     .replace(/[#*_`~>-]/g, "")
     .split("\n")
     .map((line) => line.trim())
     .find(Boolean);
 
   return preview || "";
+}
+
+function getWorkspaceSearchText(workspace) {
+  const todos = workspace.todos || [];
+  const tags = getWorkspaceTags(workspace);
+
+  return [
+    workspace.title,
+    workspace.pageTitle,
+    workspace.pageUrl,
+    workspace.domain,
+    getPlainNoteText(workspace.note),
+    ...tags,
+    ...todos.map((todo) => todo.text)
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+}
+
+function matchesWorkspaceSearch(workspace, query) {
+  const tokens = query
+    .trim()
+    .toLowerCase()
+    .replace(/#/g, "")
+    .split(/\s+/)
+    .filter(Boolean);
+
+  if (!tokens.length) return true;
+
+  const searchText = getWorkspaceSearchText(workspace);
+
+  return tokens.every((token) => searchText.includes(token));
+}
+
+function normalizeTag(tag) {
+  return tag.trim().replace(/^#/, "").replace(/\s+/g, "-").toLowerCase();
+}
+
+async function getLastSyncAt() {
+  if (globalThis.chrome?.storage?.local) {
+    const result = await globalThis.chrome.storage.local.get([
+      LAST_SYNC_KEY
+    ]);
+
+    return result[LAST_SYNC_KEY] || "";
+  }
+
+  return localStorage.getItem(LAST_SYNC_KEY) || "";
+}
+
+async function setLastSyncAt(value) {
+  if (globalThis.chrome?.storage?.local) {
+    await globalThis.chrome.storage.local.set({
+      [LAST_SYNC_KEY]: value
+    });
+
+    return;
+  }
+
+  localStorage.setItem(LAST_SYNC_KEY, value);
+}
+
+function formatLastSyncAt(value) {
+  if (!value) return "Never synced";
+
+  return new Intl.DateTimeFormat(undefined, {
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    month: "short"
+  }).format(new Date(value));
 }
 
 function escapeHtml(value) {
@@ -169,59 +251,39 @@ function App() {
   const [workspaceMode, setWorkspaceMode] = useState("current");
   const [expandedDomains, setExpandedDomains] = useState({});
   const [isCustomizeOpen, setIsCustomizeOpen] = useState(false);
+  const [isTagsOpen, setIsTagsOpen] = useState(false);
 
   const [session, setSession] = useState(null);
 
   const [saveStatus, setSaveStatus] = useState("Saved locally");
+  const [syncStatus, setSyncStatus] = useState("");
+  const [lastSyncAt, setLastSyncAtState] = useState("");
+  const [isSyncing, setIsSyncing] = useState(false);
   const saveTimersRef = useRef({});
   const pendingSaveIdsRef = useRef(new Set());
   const notesEditorRef = useRef(null);
 
   const [newTodo, setNewTodo] = useState("");
+  const [newTag, setNewTag] = useState("");
   const [workspaceSearch, setWorkspaceSearch] = useState("");
+  const currentPageUrl = tabData?.url || "";
 
   const filteredWorkspaces = useMemo(() => {
-    const query = workspaceSearch.trim().toLowerCase();
-
-    if (!query) return workspaces;
-
-    return workspaces.filter((workspace) => {
-      const title = workspace.title || "";
-      const note = workspace.note || "";
-      const todos = workspace.todos || [];
-
-      return (
-        title.toLowerCase().includes(query) ||
-        note.toLowerCase().includes(query) ||
-        todos.some((todo) =>
-          todo.text.toLowerCase().includes(query)
-        )
-      );
-    });
-  }, [workspaceSearch, workspaces]);
+    return workspaces.filter((workspace) =>
+      matchesWorkspaceSearch(
+        {
+          ...workspace,
+          pageUrl: currentPageUrl
+        },
+        workspaceSearch
+      )
+    );
+  }, [currentPageUrl, workspaceSearch, workspaces]);
 
   const filteredAllWorkspaces = useMemo(() => {
-    const query = workspaceSearch.trim().toLowerCase();
-
-    if (!query) return allWorkspaces;
-
-    return allWorkspaces.filter((workspace) => {
-      const title = workspace.title || "";
-      const note = workspace.note || "";
-      const domain = workspace.domain || "";
-      const pageUrl = workspace.pageUrl || "";
-      const todos = workspace.todos || [];
-
-      return (
-        title.toLowerCase().includes(query) ||
-        note.toLowerCase().includes(query) ||
-        domain.toLowerCase().includes(query) ||
-        pageUrl.toLowerCase().includes(query) ||
-        todos.some((todo) =>
-          todo.text.toLowerCase().includes(query)
-        )
-      );
-    });
+    return allWorkspaces.filter((workspace) =>
+      matchesWorkspaceSearch(workspace, workspaceSearch)
+    );
   }, [workspaceSearch, allWorkspaces]);
 
   const domainGroups = useMemo(
@@ -430,11 +492,13 @@ function App() {
     setSelectedWorkspace(workspace);
     setSaveStatus(session ? "Synced" : "Saved locally");
     setIsCustomizeOpen(false);
+    setIsTagsOpen(false);
     setView("detail");
   };
 
   const goBackToWorkspaces = () => {
     setIsCustomizeOpen(false);
+    setIsTagsOpen(false);
     setView("list");
   };
 
@@ -521,6 +585,73 @@ function App() {
 
   const updateWorkspaceIcon = async (icon) => {
     await handleUpdateWorkspace({ icon });
+  };
+
+  const addWorkspaceTag = async () => {
+    const tag = normalizeTag(newTag);
+
+    if (!tag || !selectedWorkspace) return;
+
+    const tags = getWorkspaceTags(selectedWorkspace);
+
+    if (tags.includes(tag)) {
+      setNewTag("");
+      return;
+    }
+
+    await handleUpdateWorkspace({
+      tags: [...tags, tag]
+    });
+
+    setNewTag("");
+  };
+
+  const removeWorkspaceTag = async (tagToRemove) => {
+    const tags = getWorkspaceTags(selectedWorkspace).filter(
+      (tag) => tag !== tagToRemove
+    );
+
+    await handleUpdateWorkspace({ tags });
+  };
+
+  const handleTagKeyDown = (e) => {
+    if (e.key === "Enter" || e.key === ",") {
+      e.preventDefault();
+      addWorkspaceTag();
+    }
+  };
+
+  const handleSidepanelSync = async () => {
+    if (!session) {
+      setSyncStatus("Sign in from the popup to sync");
+      return;
+    }
+
+    setIsSyncing(true);
+    setSyncStatus("Syncing...");
+
+    try {
+      const result = await syncBothWays(session);
+      const syncedAt = new Date().toISOString();
+
+      await setLastSyncAt(syncedAt);
+      setLastSyncAtState(syncedAt);
+      await refreshSidepanelData();
+
+      setSyncStatus(
+        `Synced ${result.uploaded} up, ${result.restored} down${
+          result.conflicts
+            ? `, ${result.conflicts} conflict resolved`
+            : ""
+        }`
+      );
+      setSaveStatus("Synced");
+    } catch (error) {
+      console.error(error);
+      setSyncStatus(error.message || "Sync failed");
+    } finally {
+      setIsSyncing(false);
+    }
   };
 
   const handleTodoKeyDown = (e) => {
@@ -655,6 +786,24 @@ function App() {
   }, []);
 
   useEffect(() => {
+    let isMounted = true;
+
+    getLastSyncAt()
+      .then((value) => {
+        if (!isMounted) return;
+
+        setLastSyncAtState(value);
+      })
+      .catch((error) => {
+        console.error(error);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
     if (!globalThis.chrome?.runtime?.onMessage) {
       return undefined;
     }
@@ -693,11 +842,25 @@ function App() {
   }, [selectedWorkspace]);
 
   if (loadError) {
-    return <div className="loading">{loadError}</div>;
+    return (
+      <div className="loading-state">
+        <div className="loading-card">
+          <h2>Tabspace could not load</h2>
+          <p>{loadError}</p>
+        </div>
+      </div>
+    );
   }
 
   if (!tabData) {
-    return <div className="loading">Loading...</div>;
+    return (
+      <div className="loading-state">
+        <div className="loading-card">
+          <span className="loading-spinner" />
+          <p>Loading workspace...</p>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -717,6 +880,26 @@ function App() {
             </div>
 
             <p>{tabData.url}</p>
+
+            <div className="page-sync-row">
+              <span className="sync-summary">
+                {syncStatus ||
+                  (session
+                    ? `Last sync: ${formatLastSyncAt(lastSyncAt)}`
+                    : "Sign in from the popup to sync")}
+              </span>
+
+              <button
+                className="sidepanel-sync-btn"
+                onClick={handleSidepanelSync}
+                disabled={isSyncing}
+              >
+                <FiRefreshCw
+                  className={isSyncing ? "sync-spinning" : ""}
+                />
+                Sync
+              </button>
+            </div>
           </div>
 
           <div className="workspace-header">
@@ -765,7 +948,7 @@ function App() {
               onChange={(e) =>
                 setWorkspaceSearch(e.target.value)
               }
-              placeholder="Search workspaces..."
+              placeholder="Search title, notes, todos, tags..."
               className="workspace-search"
             />
           </div>
@@ -797,6 +980,7 @@ function App() {
                   };
                   const notePreview = getNotePreview(workspace.note);
                   const todoProgress = getTodoProgress(workspace.todos);
+                  const tags = getWorkspaceTags(workspace);
 
                   return (
                     <div
@@ -842,15 +1026,34 @@ function App() {
                           {notePreview}
                         </p>
                       )}
+
+                      {tags.length > 0 && (
+                        <div className="workspace-tag-row">
+                          {tags.slice(0, 3).map((tag) => (
+                            <span className="workspace-tag" key={tag}>
+                              #{tag}
+                            </span>
+                          ))}
+
+                          {tags.length > 3 && (
+                            <span className="workspace-tag muted-tag">
+                              +{tags.length - 3}
+                            </span>
+                          )}
+                        </div>
+                      )}
                     </div>
                   );
                 })}
 
               {workspaces.length > 0 &&
                 filteredWorkspaces.length === 0 && (
-                <p className="empty-text">
-                  No matching workspaces
-                </p>
+                <div className="compact-empty-state">
+                  <h3>No matching workspaces</h3>
+                  <p>
+                    Try a title, todo, note phrase, URL, or tag.
+                  </p>
+                </div>
               )}
             </div>
           )}
@@ -908,6 +1111,7 @@ function App() {
                           const todoProgress = getTodoProgress(
                             workspace.todos
                           );
+                          const tags = getWorkspaceTags(workspace);
 
                           return (
                             <div
@@ -932,6 +1136,18 @@ function App() {
                                       {notePreview}
                                     </p>
                                   )}
+                                  {tags.length > 0 && (
+                                    <div className="workspace-tag-row">
+                                      {tags.slice(0, 2).map((tag) => (
+                                        <span
+                                          className="workspace-tag"
+                                          key={tag}
+                                        >
+                                          #{tag}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  )}
                                 </div>
                               </div>
 
@@ -949,9 +1165,12 @@ function App() {
 
               {allWorkspaces.length > 0 &&
                 domainGroups.length === 0 && (
-                <p className="empty-text">
-                  No matching domains
-                </p>
+                <div className="compact-empty-state">
+                  <h3>No matching domains</h3>
+                  <p>
+                    Search can match domains, URLs, titles, notes, todos, or tags.
+                  </p>
+                </div>
               )}
             </div>
           )}
@@ -1003,10 +1222,33 @@ function App() {
             />
 
             <button
-              className="customize-toggle-btn"
-              onClick={() =>
-                setIsCustomizeOpen((isOpen) => !isOpen)
-              }
+              className={`title-tool-btn ${
+                isTagsOpen ? "active-title-tool" : ""
+              }`}
+              onClick={() => {
+                setIsTagsOpen((isOpen) => !isOpen);
+                setIsCustomizeOpen(false);
+              }}
+              title="Workspace tags"
+              aria-label="Workspace tags"
+            >
+              <FiTag />
+
+              {getWorkspaceTags(selectedWorkspace).length > 0 && (
+                <span className="title-tool-count">
+                  {getWorkspaceTags(selectedWorkspace).length}
+                </span>
+              )}
+            </button>
+
+            <button
+              className={`title-tool-btn ${
+                isCustomizeOpen ? "active-title-tool" : ""
+              }`}
+              onClick={() => {
+                setIsCustomizeOpen((isOpen) => !isOpen);
+                setIsTagsOpen(false);
+              }}
               title="Customize workspace"
               aria-label="Customize workspace"
             >
@@ -1050,6 +1292,43 @@ function App() {
                   <Icon />
                 </button>
               ))}
+            </div>
+          </div>
+          )}
+
+          {isTagsOpen && (
+          <div className="tag-editor">
+            <div className="tag-list">
+              {getWorkspaceTags(selectedWorkspace).map((tag) => (
+                <span className="editable-tag" key={tag}>
+                  #{tag}
+                  <button
+                    onClick={() => removeWorkspaceTag(tag)}
+                    aria-label={`Remove ${tag} tag`}
+                  >
+                    <FiX />
+                  </button>
+                </span>
+              ))}
+
+              {getWorkspaceTags(selectedWorkspace).length === 0 && (
+                <span className="tag-placeholder">
+                  No tags yet
+                </span>
+              )}
+            </div>
+
+            <div className="tag-input-row">
+              <FiTag />
+              <input
+                value={newTag}
+                onChange={(e) => setNewTag(e.target.value)}
+                onKeyDown={handleTagKeyDown}
+                placeholder="Add tag..."
+              />
+              <button onClick={addWorkspaceTag}>
+                <FiPlus />
+              </button>
             </div>
           </div>
           )}

@@ -173,6 +173,8 @@ export async function createWorkspace(url, pageTitle) {
 
     note: "",
 
+    tags: [],
+
     todos: [],
 
     createdAt: new Date().toISOString(),
