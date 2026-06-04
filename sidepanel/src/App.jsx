@@ -18,6 +18,16 @@ import {
   onAuthStateChange
 } from "./lib/auth";
 import {
+  clearAiSettings,
+  DEFAULT_AI_SETTINGS,
+  getAiSettings,
+  saveAiSettings
+} from "./lib/aiSettings";
+import {
+  generateAiText,
+  testAiConnection
+} from "./lib/ai/aiClient";
+import {
   deleteWorkspaceFromSupabase,
   syncBothWays,
   syncWorkspaceToSupabase
@@ -35,6 +45,7 @@ import {
   FiGlobe,
   FiTag,
   FiX,
+  FiCpu,
   FiBriefcase,
   FiBookOpen,
   FiStar,
@@ -73,6 +84,20 @@ const WORKSPACE_ICONS = [
 ];
 
 const LAST_SYNC_KEY = "tabspace:last-sync-at";
+
+const AI_MODELS_BY_PROVIDER = {
+  groq: [
+    "llama-3.3-70b-versatile",
+    "llama-3.1-8b-instant",
+    "qwen/qwen3-32b"
+  ],
+  gemini: ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-1.5-flash"]
+};
+
+const AI_DEFAULT_MODEL_BY_PROVIDER = {
+  groq: "llama-3.3-70b-versatile",
+  gemini: "gemini-2.5-flash"
+};
 
 function WorkspaceIconGlyph({ iconId }) {
   switch (iconId) {
@@ -175,7 +200,103 @@ function matchesWorkspaceSearch(workspace, query) {
 }
 
 function normalizeTag(tag) {
-  return tag.trim().replace(/^#/, "").replace(/\s+/g, "-").toLowerCase();
+  return tag
+    .trim()
+    .replace(/^#/, "")
+    .replace(/[^\w\s-]/g, "")
+    .replace(/\s+/g, "-")
+    .toLowerCase();
+}
+
+function buildSuggestTagsPrompt(workspace) {
+  const todos = workspace.todos || [];
+
+  return `
+You are a tag generator for a Chrome productivity extension.
+Generate 3 to 6 useful tags for the workspace below.
+
+Rules:
+- Return a JSON array of strings only.
+- Do not use markdown.
+- Do not wrap the response in a code block.
+- Do not add any explanation.
+- Do not say "here is".
+- Use lowercase.
+- Use short tags, 1 to 3 words.
+- Do not include #.
+- Prefer useful organization labels over generic words.
+- Avoid tags already present.
+
+Existing tags:
+${getWorkspaceTags(workspace).join(", ") || "none"}
+
+Workspace:
+Title: ${workspace.title || ""}
+Page title: ${workspace.pageTitle || ""}
+URL: ${workspace.pageUrl || ""}
+Notes: ${getPlainNoteText(workspace.note || "") || "none"}
+Todos: ${
+    todos.map((todo) => todo.text).join("; ") || "none"
+  }
+
+Example response:
+["research","frontend","bug-fix"]
+`.trim();
+}
+
+function parseSuggestedTags(text) {
+  const cleanedText = text
+    .trim()
+    .replace(/^```(?:json)?/i, "")
+    .replace(/```$/i, "")
+    .trim();
+
+  const normalizeSuggestedTagList = (tagList) =>
+    tagList
+      .map((tag) =>
+        typeof tag === "string" ? tag : tag?.tag || tag?.name || ""
+      )
+      .filter(Boolean);
+
+  try {
+    const parsed = JSON.parse(cleanedText);
+
+    if (Array.isArray(parsed)) {
+      return normalizeSuggestedTagList(parsed);
+    }
+
+    if (Array.isArray(parsed.tags)) {
+      return normalizeSuggestedTagList(parsed.tags);
+    }
+  } catch {
+    const jsonMatch = cleanedText.match(/\[[\s\S]*\]/);
+
+    if (jsonMatch) {
+      try {
+        const parsed = JSON.parse(jsonMatch[0]);
+
+        if (Array.isArray(parsed)) {
+          return normalizeSuggestedTagList(parsed);
+        }
+      } catch {
+        return [];
+      }
+    }
+  }
+
+  const quotedTags = Array.from(
+    cleanedText.matchAll(/"([^"]+)"/g),
+    (match) => match[1]
+  );
+
+  if (quotedTags.length) {
+    return normalizeSuggestedTagList(quotedTags);
+  }
+
+  return cleanedText
+    .split("\n")
+    .map((line) => line.replace(/^[-*\d.\s]+/, "").trim())
+    .filter((line) => line && !/\b(json|here is|requested)\b/i.test(line));
 }
 
 async function getLastSyncAt() {
@@ -252,6 +373,8 @@ function App() {
   const [expandedDomains, setExpandedDomains] = useState({});
   const [isCustomizeOpen, setIsCustomizeOpen] = useState(false);
   const [isTagsOpen, setIsTagsOpen] = useState(false);
+  const [isAiSettingsOpen, setIsAiSettingsOpen] = useState(false);
+  const [isAiConfigOpen, setIsAiConfigOpen] = useState(false);
 
   const [session, setSession] = useState(null);
 
@@ -266,7 +389,16 @@ function App() {
   const [newTodo, setNewTodo] = useState("");
   const [newTag, setNewTag] = useState("");
   const [workspaceSearch, setWorkspaceSearch] = useState("");
+  const [aiSettings, setAiSettings] = useState(DEFAULT_AI_SETTINGS);
+  const [aiSettingsStatus, setAiSettingsStatus] = useState("");
+  const [isTestingAiConnection, setIsTestingAiConnection] = useState(false);
+  const [suggestedTags, setSuggestedTags] = useState([]);
+  const [isSuggestingTags, setIsSuggestingTags] = useState(false);
   const currentPageUrl = tabData?.url || "";
+  const isAiConfigured = Boolean(aiSettings.apiKey?.trim());
+  const aiModels =
+    AI_MODELS_BY_PROVIDER[aiSettings.provider] ||
+    AI_MODELS_BY_PROVIDER.groq;
 
   const filteredWorkspaces = useMemo(() => {
     return workspaces.filter((workspace) =>
@@ -493,12 +625,18 @@ function App() {
     setSaveStatus(session ? "Synced" : "Saved locally");
     setIsCustomizeOpen(false);
     setIsTagsOpen(false);
+    setIsAiSettingsOpen(false);
+    setIsAiConfigOpen(false);
+    setSuggestedTags([]);
     setView("detail");
   };
 
   const goBackToWorkspaces = () => {
     setIsCustomizeOpen(false);
     setIsTagsOpen(false);
+    setIsAiSettingsOpen(false);
+    setIsAiConfigOpen(false);
+    setSuggestedTags([]);
     setView("list");
   };
 
@@ -654,6 +792,128 @@ function App() {
     }
   };
 
+  const handleAiSettingsChange = (field, value) => {
+    setAiSettings((current) => ({
+      ...current,
+      [field]: value,
+      ...(field === "provider"
+        ? {
+            model:
+              AI_DEFAULT_MODEL_BY_PROVIDER[value] ||
+              AI_DEFAULT_MODEL_BY_PROVIDER.groq
+          }
+        : {})
+    }));
+    setAiSettingsStatus("");
+  };
+
+  const handleSaveAiSettings = async () => {
+    const savedSettings = await saveAiSettings({
+      ...aiSettings,
+      apiKey: aiSettings.apiKey.trim()
+    });
+
+    setAiSettings(savedSettings);
+    setAiSettingsStatus("AI settings saved");
+  };
+
+  const handleClearAiSettings = async () => {
+    const clearedSettings = await clearAiSettings();
+
+    setAiSettings(clearedSettings);
+    setAiSettingsStatus("AI settings cleared");
+  };
+
+  const handleTestAiConnection = async () => {
+    setIsTestingAiConnection(true);
+    setAiSettingsStatus("Testing AI connection...");
+
+    try {
+      const savedSettings = await saveAiSettings({
+        ...aiSettings,
+        apiKey: aiSettings.apiKey.trim()
+      });
+
+      setAiSettings(savedSettings);
+
+      const isConnected = await testAiConnection(savedSettings);
+
+      setAiSettingsStatus(
+        isConnected
+          ? "Connected"
+          : "Provider responded, but the test response was unexpected"
+      );
+    } catch (error) {
+      console.error(error);
+      setAiSettingsStatus(error.message || "AI connection failed");
+    } finally {
+      setIsTestingAiConnection(false);
+    }
+  };
+
+  const handleSuggestTags = async () => {
+    if (!selectedWorkspace) return;
+
+    setIsSuggestingTags(true);
+    setAiSettingsStatus("Suggesting tags...");
+
+    try {
+      const savedSettings = await saveAiSettings({
+        ...aiSettings,
+        apiKey: aiSettings.apiKey.trim()
+      });
+      const existingTags = getWorkspaceTags(selectedWorkspace);
+      const response = await generateAiText({
+        settings: savedSettings,
+        prompt: buildSuggestTagsPrompt(selectedWorkspace),
+        generationConfig: {
+          maxOutputTokens: 512,
+          responseMimeType: "application/json",
+          thinkingConfig: {
+            thinkingBudget: 0
+          },
+          temperature: 0.25
+        }
+      });
+
+      const tags = parseSuggestedTags(response)
+        .map((tag) => normalizeTag(String(tag)))
+        .filter(Boolean)
+        .filter((tag) => !existingTags.includes(tag))
+        .filter((tag, index, tagList) => tagList.indexOf(tag) === index)
+        .slice(0, 6);
+
+      setAiSettings(savedSettings);
+      setSuggestedTags(tags);
+      setAiSettingsStatus(
+        tags.length
+          ? "Review suggested tags"
+          : "No new tag suggestions"
+      );
+    } catch (error) {
+      console.error(error);
+      setAiSettingsStatus(error.message || "Unable to suggest tags");
+    } finally {
+      setIsSuggestingTags(false);
+    }
+  };
+
+  const acceptSuggestedTag = async (tag) => {
+    if (!selectedWorkspace) return;
+
+    const existingTags = getWorkspaceTags(selectedWorkspace);
+
+    if (!existingTags.includes(tag)) {
+      await handleUpdateWorkspace({
+        tags: [...existingTags, tag]
+      });
+    }
+
+    setSuggestedTags((tags) =>
+      tags.filter((suggestedTag) => suggestedTag !== tag)
+    );
+  };
+
   const handleTodoKeyDown = (e) => {
     if (e.key === "Enter") {
       addTodo();
@@ -782,6 +1042,24 @@ function App() {
     return () => {
       isMounted = false;
       subscription.unsubscribe();
+    };
+  }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    getAiSettings()
+      .then((settings) => {
+        if (!isMounted) return;
+
+        setAiSettings(settings);
+      })
+      .catch((error) => {
+        console.error(error);
+      });
+
+    return () => {
+      isMounted = false;
     };
   }, []);
 
@@ -1228,6 +1506,7 @@ function App() {
               onClick={() => {
                 setIsTagsOpen((isOpen) => !isOpen);
                 setIsCustomizeOpen(false);
+                setIsAiSettingsOpen(false);
               }}
               title="Workspace tags"
               aria-label="Workspace tags"
@@ -1243,11 +1522,31 @@ function App() {
 
             <button
               className={`title-tool-btn ${
+                isAiSettingsOpen ? "active-title-tool" : ""
+              }`}
+              onClick={() => {
+                setIsAiSettingsOpen((isOpen) => !isOpen);
+                setIsTagsOpen(false);
+                setIsCustomizeOpen(false);
+              }}
+              title="AI settings"
+              aria-label="AI settings"
+            >
+              <FiCpu />
+
+              {isAiConfigured && (
+                <span className="title-tool-dot" />
+              )}
+            </button>
+
+            <button
+              className={`title-tool-btn ${
                 isCustomizeOpen ? "active-title-tool" : ""
               }`}
               onClick={() => {
                 setIsCustomizeOpen((isOpen) => !isOpen);
                 setIsTagsOpen(false);
+                setIsAiSettingsOpen(false);
               }}
               title="Customize workspace"
               aria-label="Customize workspace"
@@ -1293,6 +1592,142 @@ function App() {
                 </button>
               ))}
             </div>
+          </div>
+          )}
+
+          {isAiSettingsOpen && (
+          <div className="ai-settings-panel">
+            <div className="ai-settings-header">
+              <div>
+                <h3>AI</h3>
+                <p>
+                  Use your own provider key for optional actions.
+                </p>
+              </div>
+
+              <button
+                className="ai-config-toggle"
+                onClick={() =>
+                  setIsAiConfigOpen((isOpen) => !isOpen)
+                }
+              >
+                <FiSettings />
+                Settings
+              </button>
+            </div>
+
+            <div className="ai-actions-panel">
+              <button
+                className="ai-action-btn"
+                onClick={handleSuggestTags}
+                disabled={isSuggestingTags}
+              >
+                <FiTag />
+                {isSuggestingTags ? "Suggesting..." : "Suggest Tags"}
+              </button>
+
+              {suggestedTags.length > 0 && (
+                <div className="suggested-tag-list">
+                  {suggestedTags.map((tag) => (
+                    <button
+                      key={tag}
+                      onClick={() => acceptSuggestedTag(tag)}
+                    >
+                      + #{tag}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {isAiConfigOpen && (
+            <div className="ai-config-panel">
+              <div className="ai-config-status-row">
+                <span
+                  className={`ai-status-pill ${
+                    isAiConfigured ? "ai-connected" : ""
+                  }`}
+                >
+                  {isAiConfigured ? "Configured" : "Not set"}
+                </span>
+              </div>
+
+            <label className="ai-field">
+              <span>Provider</span>
+              <select
+                value={aiSettings.provider}
+                onChange={(e) =>
+                  handleAiSettingsChange("provider", e.target.value)
+                }
+              >
+                <option value="groq">Groq</option>
+                <option value="gemini">Gemini</option>
+              </select>
+            </label>
+
+            <label className="ai-field">
+              <span>API key</span>
+              <input
+                type="password"
+                value={aiSettings.apiKey}
+                onChange={(e) =>
+                  handleAiSettingsChange("apiKey", e.target.value)
+                }
+                placeholder="Paste provider API key"
+              />
+            </label>
+
+            <label className="ai-field">
+              <span>Model</span>
+              <select
+                value={aiSettings.model}
+                onChange={(e) =>
+                  handleAiSettingsChange("model", e.target.value)
+                }
+              >
+                {aiModels.map((model) => (
+                  <option key={model} value={model}>
+                    {model}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <p className="ai-privacy-note">
+              Future AI actions will send selected workspace content to your configured provider.
+            </p>
+
+            <div className="ai-settings-actions">
+              <button
+                className="ai-test-btn"
+                onClick={handleTestAiConnection}
+                disabled={isTestingAiConnection}
+              >
+                {isTestingAiConnection ? "Testing..." : "Test"}
+              </button>
+
+              <button
+                className="ai-save-btn"
+                onClick={handleSaveAiSettings}
+              >
+                Save
+              </button>
+
+              <button
+                className="ai-clear-btn"
+                onClick={handleClearAiSettings}
+              >
+                Clear
+              </button>
+            </div>
+            </div>
+            )}
+
+            {aiSettingsStatus && (
+              <p className="ai-settings-status">
+                {aiSettingsStatus}
+              </p>
+            )}
           </div>
           )}
 
@@ -1567,4 +2002,3 @@ function App() {
 }
 
 export default App;
-

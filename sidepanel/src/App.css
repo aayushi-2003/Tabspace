@@ -652,6 +652,17 @@ body {
   top: -5px;
 }
 
+.title-tool-dot {
+  width: 8px;
+  height: 8px;
+  background: #22c55e;
+  border: 2px solid #102041;
+  border-radius: 999px;
+  position: absolute;
+  right: 5px;
+  top: 5px;
+}
+
 .detail-title-icon {
   width: 34px;
   height: 34px;
@@ -699,6 +710,212 @@ body {
   gap: 10px;
   margin: -4px 0 16px;
   padding: 10px;
+}
+
+.ai-settings-panel {
+  background: #102041;
+  border: 1px solid #32405f;
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: -4px 0 16px;
+  padding: 10px;
+}
+
+.ai-settings-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.ai-settings-header h3 {
+  color: white;
+  font-size: 14px;
+  line-height: 1.2;
+  margin-bottom: 4px;
+}
+
+.ai-settings-header p,
+.ai-privacy-note,
+.ai-settings-status {
+  color: #a8b3cf;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.ai-config-toggle {
+  background: #1a2744;
+  border: 1px solid #32405f;
+  border-radius: 8px;
+  color: #b8c0d9;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 7px 9px;
+}
+
+.ai-config-toggle:hover {
+  border-color: #6a31cb;
+  color: white;
+}
+
+.ai-status-pill {
+  background: #1a2744;
+  border: 1px solid #32405f;
+  border-radius: 999px;
+  color: #a8b3cf;
+  flex: 0 0 auto;
+  font-size: 11px;
+  line-height: 1;
+  padding: 6px 8px;
+}
+
+.ai-connected {
+  border-color: rgba(34, 197, 94, 0.55);
+  color: #86efac;
+}
+
+.ai-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ai-field span {
+  color: #b8c0d9;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.ai-field input,
+.ai-field select {
+  width: 100%;
+  background: #1a2744;
+  border: 1px solid #32405f;
+  border-radius: 8px;
+  color: white;
+  font-size: 13px;
+  padding: 9px 10px;
+}
+
+.ai-field input:focus,
+.ai-field select:focus {
+  border-color: #6a31cb;
+  outline: none;
+}
+
+.ai-field input::placeholder {
+  color: #7f8ba8;
+}
+
+.ai-actions-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ai-action-btn {
+  width: 100%;
+  background: #1a2744;
+  border: 1px solid #32405f;
+  border-radius: 8px;
+  color: white;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 9px 10px;
+}
+
+.ai-action-btn:hover {
+  border-color: #6a31cb;
+}
+
+.ai-action-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+.suggested-tag-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.suggested-tag-list button {
+  background: rgba(106, 49, 203, 0.16);
+  border: 1px solid rgba(139, 92, 246, 0.48);
+  border-radius: 999px;
+  color: #d8ccff;
+  cursor: pointer;
+  font-size: 11px;
+  line-height: 1;
+  padding: 6px 8px;
+}
+
+.suggested-tag-list button:hover {
+  background: rgba(106, 49, 203, 0.28);
+  color: white;
+}
+
+.ai-config-panel {
+  border-top: 1px solid #32405f;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 10px;
+}
+
+.ai-config-status-row {
+  display: flex;
+  justify-content: flex-start;
+}
+
+.ai-settings-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 8px;
+}
+
+.ai-save-btn,
+.ai-test-btn,
+.ai-clear-btn {
+  border: none;
+  border-radius: 8px;
+  color: white;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 9px 10px;
+}
+
+.ai-test-btn {
+  background: #102041;
+  border: 1px solid #32405f;
+}
+
+.ai-test-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+.ai-save-btn {
+  background: #6a31cb;
+}
+
+.ai-clear-btn {
+  background: #1a2744;
+  border: 1px solid #32405f;
+  color: #b8c0d9;
 }
 
 .tag-list {

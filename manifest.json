@@ -7,6 +7,10 @@
     "tabs",
     "sidePanel"
   ],
+  "host_permissions": [
+    "https://api.groq.com/*",
+    "https://generativelanguage.googleapis.com/*"
+  ],
   "background": {
     "service_worker": "background/service-worker.js"
   },
