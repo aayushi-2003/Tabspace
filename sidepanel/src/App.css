@@ -867,6 +867,77 @@ body {
   color: white;
 }
 
+.suggested-todo-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.suggested-todo-list button {
+  width: 100%;
+  background: #102041;
+  border: 1px solid #32405f;
+  border-radius: 8px;
+  color: #d8def0;
+  cursor: pointer;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 12px;
+  line-height: 1.35;
+  padding: 8px 9px;
+  text-align: left;
+}
+
+.suggested-todo-list button:hover {
+  border-color: #6a31cb;
+  color: white;
+}
+
+.suggested-todo-list svg {
+  flex: 0 0 auto;
+  margin-top: 1px;
+}
+
+.selection-summary-card {
+  background: #0b162d;
+  border: 1px solid #32405f;
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+}
+
+.selection-summary-card p {
+  color: #d8def0;
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
+.selection-summary-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.selection-summary-actions button {
+  background: #1a2744;
+  border: 1px solid #32405f;
+  border-radius: 8px;
+  color: white;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 8px 9px;
+}
+
+.selection-summary-actions button:first-child {
+  background: #6a31cb;
+  border-color: #6a31cb;
+}
+
 .ai-config-panel {
   border-top: 1px solid #32405f;
   display: flex;

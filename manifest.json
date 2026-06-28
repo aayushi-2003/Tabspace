@@ -5,7 +5,9 @@
   "permissions": [
     "storage",
     "tabs",
-    "sidePanel"
+    "sidePanel",
+    "scripting",
+    "activeTab"
   ],
   "host_permissions": [
     "https://api.groq.com/*",

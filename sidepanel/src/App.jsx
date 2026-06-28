@@ -1,10 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  DragDropContext,
-  Droppable,
-  Draggable
-} from "@hello-pangea/dnd";
-import {
   getCurrentTabData,
   getWorkspaces,
   getAllWorkspaces,
@@ -28,6 +23,29 @@ import {
   testAiConnection
 } from "./lib/ai/aiClient";
 import {
+  buildExtractTodosPrompt,
+  buildSuggestTagsPrompt,
+  buildSummarizeSelectionPrompt,
+  formatSummaryHtml
+} from "./lib/ai/aiPrompts";
+import {
+  parseSuggestedTags,
+  parseSuggestedTodos
+} from "./lib/ai/aiParsers";
+import {
+  escapeHtml,
+  getSelectedTextFromActiveTab,
+  isSelectionInsideCodeSnippet
+} from "./lib/htmlUtils";
+import {
+  getNotePreview,
+  getPlainNoteText,
+  getTodoProgress,
+  getWorkspaceTags,
+  matchesWorkspaceSearch,
+  normalizeTag
+} from "./lib/workspaceUtils";
+import {
   deleteWorkspaceFromSupabase,
   syncBothWays,
   syncWorkspaceToSupabase
@@ -39,49 +57,27 @@ import {
   FiChevronRight,
   FiPlus,
   FiTrash2,
-  FiCheck,
   FiSearch,
   FiRefreshCw,
   FiGlobe,
   FiTag,
-  FiX,
   FiCpu,
-  FiBriefcase,
-  FiBookOpen,
-  FiStar,
-  FiZap,
-  FiCode,
-  FiHeart,
-  FiBold,
-  FiItalic,
-  FiUnderline,
-  FiList,
-  FiHash,
-  FiAlignLeft,
-  FiAlignCenter,
-  FiAlignRight,
   FiSettings
 } from "react-icons/fi";
+import AiDrawer from "./components/AiDrawer";
+import NotesEditor from "./components/NotesEditor";
+import TagsDrawer from "./components/TagsDrawer";
+import TodoList from "./components/TodoList";
+import {
+  WorkspaceIconGlyph
+} from "./components/workspaceVisuals";
+import {
+  getWorkspaceColorClass,
+  WORKSPACE_COLORS,
+  WORKSPACE_ICONS
+} from "./lib/workspaceVisuals";
 
 import "./App.css";
-
-const WORKSPACE_COLORS = [
-  "#7c3aed",
-  "#06b6d4",
-  "#22c55e",
-  "#f59e0b",
-  "#ef4444",
-  "#ec4899"
-];
-
-const WORKSPACE_ICONS = [
-  { id: "briefcase", Icon: FiBriefcase },
-  { id: "book", Icon: FiBookOpen },
-  { id: "star", Icon: FiStar },
-  { id: "zap", Icon: FiZap },
-  { id: "code", Icon: FiCode },
-  { id: "heart", Icon: FiHeart }
-];
 
 const LAST_SYNC_KEY = "tabspace:last-sync-at";
 
@@ -98,206 +94,6 @@ const AI_DEFAULT_MODEL_BY_PROVIDER = {
   groq: "llama-3.3-70b-versatile",
   gemini: "gemini-2.5-flash"
 };
-
-function WorkspaceIconGlyph({ iconId }) {
-  switch (iconId) {
-    case "book":
-      return <FiBookOpen />;
-    case "star":
-      return <FiStar />;
-    case "zap":
-      return <FiZap />;
-    case "code":
-      return <FiCode />;
-    case "heart":
-      return <FiHeart />;
-    default:
-      return <FiBriefcase />;
-  }
-}
-
-function getWorkspaceColorClass(color) {
-  const colorIndex = WORKSPACE_COLORS.indexOf(color);
-
-  return `workspace-color-${colorIndex >= 0 ? colorIndex : 0}`;
-}
-
-function getTodoProgress(todos = []) {
-  const total = todos.length;
-  const done = todos.filter((todo) => todo.done).length;
-
-  if (!total) {
-    return {
-      done,
-      total,
-      label: "No todos"
-    };
-  }
-
-  return {
-    done,
-    total,
-    label: `${done}/${total} done`
-  };
-}
-
-function getPlainNoteText(note = "") {
-  if (typeof document === "undefined") {
-    return note.replace(/<[^>]+>/g, "");
-  }
-
-  const container = document.createElement("div");
-  container.innerHTML = note;
-
-  return container.textContent || "";
-}
-
-function getWorkspaceTags(workspace) {
-  return Array.isArray(workspace?.tags) ? workspace.tags : [];
-}
-
-function getNotePreview(note = "") {
-  const preview = getPlainNoteText(note)
-    .replace(/[#*_`~>-]/g, "")
-    .split("\n")
-    .map((line) => line.trim())
-    .find(Boolean);
-
-  return preview || "";
-}
-
-function getWorkspaceSearchText(workspace) {
-  const todos = workspace.todos || [];
-  const tags = getWorkspaceTags(workspace);
-
-  return [
-    workspace.title,
-    workspace.pageTitle,
-    workspace.pageUrl,
-    workspace.domain,
-    getPlainNoteText(workspace.note),
-    ...tags,
-    ...todos.map((todo) => todo.text)
-  ]
-    .filter(Boolean)
-    .join(" ")
-    .toLowerCase();
-}
-
-function matchesWorkspaceSearch(workspace, query) {
-  const tokens = query
-    .trim()
-    .toLowerCase()
-    .replace(/#/g, "")
-    .split(/\s+/)
-    .filter(Boolean);
-
-  if (!tokens.length) return true;
-
-  const searchText = getWorkspaceSearchText(workspace);
-
-  return tokens.every((token) => searchText.includes(token));
-}
-
-function normalizeTag(tag) {
-  return tag
-    .trim()
-    .replace(/^#/, "")
-    .replace(/[^\w\s-]/g, "")
-    .replace(/\s+/g, "-")
-    .toLowerCase();
-}
-
-function buildSuggestTagsPrompt(workspace) {
-  const todos = workspace.todos || [];
-
-  return `
-You are a tag generator for a Chrome productivity extension.
-Generate 3 to 6 useful tags for the workspace below.
-
-Rules:
-- Return a JSON array of strings only.
-- Do not use markdown.
-- Do not wrap the response in a code block.
-- Do not add any explanation.
-- Do not say "here is".
-- Use lowercase.
-- Use short tags, 1 to 3 words.
-- Do not include #.
-- Prefer useful organization labels over generic words.
-- Avoid tags already present.
-
-Existing tags:
-${getWorkspaceTags(workspace).join(", ") || "none"}
-
-Workspace:
-Title: ${workspace.title || ""}
-Page title: ${workspace.pageTitle || ""}
-URL: ${workspace.pageUrl || ""}
-Notes: ${getPlainNoteText(workspace.note || "") || "none"}
-Todos: ${
-    todos.map((todo) => todo.text).join("; ") || "none"
-  }
-
-Example response:
-["research","frontend","bug-fix"]
-`.trim();
-}
-
-function parseSuggestedTags(text) {
-  const cleanedText = text
-    .trim()
-    .replace(/^```(?:json)?/i, "")
-    .replace(/```$/i, "")
-    .trim();
-
-  const normalizeSuggestedTagList = (tagList) =>
-    tagList
-      .map((tag) =>
-        typeof tag === "string" ? tag : tag?.tag || tag?.name || ""
-      )
-      .filter(Boolean);
-
-  try {
-    const parsed = JSON.parse(cleanedText);
-
-    if (Array.isArray(parsed)) {
-      return normalizeSuggestedTagList(parsed);
-    }
-
-    if (Array.isArray(parsed.tags)) {
-      return normalizeSuggestedTagList(parsed.tags);
-    }
-  } catch {
-    const jsonMatch = cleanedText.match(/\[[\s\S]*\]/);
-
-    if (jsonMatch) {
-      try {
-        const parsed = JSON.parse(jsonMatch[0]);
-
-        if (Array.isArray(parsed)) {
-          return normalizeSuggestedTagList(parsed);
-        }
-      } catch {
-        return [];
-      }
-    }
-  }
-
-  const quotedTags = Array.from(
-    cleanedText.matchAll(/"([^"]+)"/g),
-    (match) => match[1]
-  );
-
-  if (quotedTags.length) {
-    return normalizeSuggestedTagList(quotedTags);
-  }
-
-  return cleanedText
-    .split("\n")
-    .map((line) => line.replace(/^[-*\d.\s]+/, "").trim())
-    .filter((line) => line && !/\b(json|here is|requested)\b/i.test(line));
-}
 
 async function getLastSyncAt() {
   if (globalThis.chrome?.storage?.local) {
@@ -334,32 +130,6 @@ function formatLastSyncAt(value) {
   }).format(new Date(value));
 }
 
-function escapeHtml(value) {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
-function isSelectionInsideCodeSnippet(editor, selection) {
-  if (!selection || selection.rangeCount === 0) {
-    return false;
-  }
-
-  const range = selection.getRangeAt(0);
-  const container = range.commonAncestorContainer;
-  const element =
-    container.nodeType === Node.ELEMENT_NODE
-      ? container
-      : container.parentElement;
-
-  return Boolean(
-    element?.closest("pre, code") &&
-      editor.contains(element.closest("pre, code"))
-  );
-}
-
 function App() {
   const [tabData, setTabData] = useState(null);
   const [loadError, setLoadError] = useState("");
@@ -394,6 +164,10 @@ function App() {
   const [isTestingAiConnection, setIsTestingAiConnection] = useState(false);
   const [suggestedTags, setSuggestedTags] = useState([]);
   const [isSuggestingTags, setIsSuggestingTags] = useState(false);
+  const [suggestedTodos, setSuggestedTodos] = useState([]);
+  const [isExtractingTodos, setIsExtractingTodos] = useState(false);
+  const [selectionSummary, setSelectionSummary] = useState("");
+  const [isSummarizingSelection, setIsSummarizingSelection] = useState(false);
   const currentPageUrl = tabData?.url || "";
   const isAiConfigured = Boolean(aiSettings.apiKey?.trim());
   const aiModels =
@@ -628,6 +402,8 @@ function App() {
     setIsAiSettingsOpen(false);
     setIsAiConfigOpen(false);
     setSuggestedTags([]);
+    setSuggestedTodos([]);
+    setSelectionSummary("");
     setView("detail");
   };
 
@@ -637,6 +413,8 @@ function App() {
     setIsAiSettingsOpen(false);
     setIsAiConfigOpen(false);
     setSuggestedTags([]);
+    setSuggestedTodos([]);
+    setSelectionSummary("");
     setView("list");
   };
 
@@ -912,6 +690,130 @@ function App() {
     setSuggestedTags((tags) =>
       tags.filter((suggestedTag) => suggestedTag !== tag)
     );
+  };
+
+  const handleExtractTodos = async () => {
+    if (!selectedWorkspace) return;
+
+    const noteText = getPlainNoteText(selectedWorkspace.note || "");
+
+    if (!noteText.trim()) {
+      setAiSettingsStatus("Add notes before extracting todos");
+      return;
+    }
+
+    setIsExtractingTodos(true);
+    setAiSettingsStatus("Extracting todos...");
+
+    try {
+      const savedSettings = await saveAiSettings({
+        ...aiSettings,
+        apiKey: aiSettings.apiKey.trim()
+      });
+      const existingTodoTexts = (selectedWorkspace.todos || []).map((todo) =>
+        todo.text.trim().toLowerCase()
+      );
+      const response = await generateAiText({
+        settings: savedSettings,
+        prompt: buildExtractTodosPrompt(selectedWorkspace),
+        generationConfig: {
+          maxOutputTokens: 512,
+          responseMimeType: "application/json",
+          temperature: 0.2
+        }
+      });
+      const todos = parseSuggestedTodos(response)
+        .filter(
+          (todo) => !existingTodoTexts.includes(todo.trim().toLowerCase())
+        )
+        .filter((todo, index, todoList) => todoList.indexOf(todo) === index)
+        .slice(0, 8);
+
+      setAiSettings(savedSettings);
+      setSuggestedTodos(todos);
+      setAiSettingsStatus(
+        todos.length
+          ? "Review extracted todos"
+          : "No new todos found"
+      );
+    } catch (error) {
+      console.error(error);
+      setAiSettingsStatus(error.message || "Unable to extract todos");
+    } finally {
+      setIsExtractingTodos(false);
+    }
+  };
+
+  const acceptSuggestedTodo = async (todoText) => {
+    if (!selectedWorkspace) return;
+
+    const todos = [
+      ...(selectedWorkspace.todos || []),
+      {
+        id: crypto.randomUUID(),
+        text: todoText,
+        done: false
+      }
+    ];
+
+    await handleUpdateWorkspace({ todos });
+
+    setSuggestedTodos((todos) =>
+      todos.filter((suggestedTodo) => suggestedTodo !== todoText)
+    );
+  };
+
+  const handleSummarizeSelection = async () => {
+    setIsSummarizingSelection(true);
+    setSelectionSummary("");
+    setAiSettingsStatus("Reading selected text...");
+
+    try {
+      const selectedText = await getSelectedTextFromActiveTab();
+
+      if (!selectedText) {
+        setAiSettingsStatus("Select text on the page first");
+        return;
+      }
+
+      setAiSettingsStatus("Summarizing selection...");
+
+      const savedSettings = await saveAiSettings({
+        ...aiSettings,
+        apiKey: aiSettings.apiKey.trim()
+      });
+      const summary = await generateAiText({
+        settings: savedSettings,
+        prompt: buildSummarizeSelectionPrompt(selectedText),
+        generationConfig: {
+          maxOutputTokens: 500,
+          temperature: 0.2
+        }
+      });
+
+      setAiSettings(savedSettings);
+      setSelectionSummary(summary.trim());
+      setAiSettingsStatus("Review selection summary");
+    } catch (error) {
+      console.error(error);
+      setAiSettingsStatus(error.message || "Unable to summarize selection");
+    } finally {
+      setIsSummarizingSelection(false);
+    }
+  };
+
+  const insertSelectionSummary = async () => {
+    if (!selectedWorkspace || !selectionSummary) return;
+
+    const note = selectedWorkspace.note || "";
+    const spacer = note.trim() ? "<p><br></p>" : "";
+
+    await handleUpdateWorkspace({
+      note: `${note}${spacer}${formatSummaryHtml(selectionSummary)}`
+    });
+
+    setSelectionSummary("");
+    setAiSettingsStatus("Summary inserted into notes");
   };
 
   const handleTodoKeyDown = (e) => {
@@ -1596,404 +1498,69 @@ function App() {
           )}
 
           {isAiSettingsOpen && (
-          <div className="ai-settings-panel">
-            <div className="ai-settings-header">
-              <div>
-                <h3>AI</h3>
-                <p>
-                  Use your own provider key for optional actions.
-                </p>
-              </div>
-
-              <button
-                className="ai-config-toggle"
-                onClick={() =>
-                  setIsAiConfigOpen((isOpen) => !isOpen)
-                }
-              >
-                <FiSettings />
-                Settings
-              </button>
-            </div>
-
-            <div className="ai-actions-panel">
-              <button
-                className="ai-action-btn"
-                onClick={handleSuggestTags}
-                disabled={isSuggestingTags}
-              >
-                <FiTag />
-                {isSuggestingTags ? "Suggesting..." : "Suggest Tags"}
-              </button>
-
-              {suggestedTags.length > 0 && (
-                <div className="suggested-tag-list">
-                  {suggestedTags.map((tag) => (
-                    <button
-                      key={tag}
-                      onClick={() => acceptSuggestedTag(tag)}
-                    >
-                      + #{tag}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {isAiConfigOpen && (
-            <div className="ai-config-panel">
-              <div className="ai-config-status-row">
-                <span
-                  className={`ai-status-pill ${
-                    isAiConfigured ? "ai-connected" : ""
-                  }`}
-                >
-                  {isAiConfigured ? "Configured" : "Not set"}
-                </span>
-              </div>
-
-            <label className="ai-field">
-              <span>Provider</span>
-              <select
-                value={aiSettings.provider}
-                onChange={(e) =>
-                  handleAiSettingsChange("provider", e.target.value)
-                }
-              >
-                <option value="groq">Groq</option>
-                <option value="gemini">Gemini</option>
-              </select>
-            </label>
-
-            <label className="ai-field">
-              <span>API key</span>
-              <input
-                type="password"
-                value={aiSettings.apiKey}
-                onChange={(e) =>
-                  handleAiSettingsChange("apiKey", e.target.value)
-                }
-                placeholder="Paste provider API key"
-              />
-            </label>
-
-            <label className="ai-field">
-              <span>Model</span>
-              <select
-                value={aiSettings.model}
-                onChange={(e) =>
-                  handleAiSettingsChange("model", e.target.value)
-                }
-              >
-                {aiModels.map((model) => (
-                  <option key={model} value={model}>
-                    {model}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <p className="ai-privacy-note">
-              Future AI actions will send selected workspace content to your configured provider.
-            </p>
-
-            <div className="ai-settings-actions">
-              <button
-                className="ai-test-btn"
-                onClick={handleTestAiConnection}
-                disabled={isTestingAiConnection}
-              >
-                {isTestingAiConnection ? "Testing..." : "Test"}
-              </button>
-
-              <button
-                className="ai-save-btn"
-                onClick={handleSaveAiSettings}
-              >
-                Save
-              </button>
-
-              <button
-                className="ai-clear-btn"
-                onClick={handleClearAiSettings}
-              >
-                Clear
-              </button>
-            </div>
-            </div>
-            )}
-
-            {aiSettingsStatus && (
-              <p className="ai-settings-status">
-                {aiSettingsStatus}
-              </p>
-            )}
-          </div>
+          <AiDrawer
+            aiModels={aiModels}
+            aiSettings={aiSettings}
+            aiSettingsStatus={aiSettingsStatus}
+            isAiConfigOpen={isAiConfigOpen}
+            isAiConfigured={isAiConfigured}
+            isExtractingTodos={isExtractingTodos}
+            isSuggestingTags={isSuggestingTags}
+            isSummarizingSelection={isSummarizingSelection}
+            isTestingAiConnection={isTestingAiConnection}
+            onAcceptSuggestedTag={acceptSuggestedTag}
+            onAcceptSuggestedTodo={acceptSuggestedTodo}
+            onAiSettingsChange={handleAiSettingsChange}
+            onClearAiSettings={handleClearAiSettings}
+            onDismissSelectionSummary={() => setSelectionSummary("")}
+            onExtractTodos={handleExtractTodos}
+            onInsertSelectionSummary={insertSelectionSummary}
+            onSaveAiSettings={handleSaveAiSettings}
+            onSuggestTags={handleSuggestTags}
+            onSummarizeSelection={handleSummarizeSelection}
+            onTestAiConnection={handleTestAiConnection}
+            onToggleConfig={() =>
+              setIsAiConfigOpen((isOpen) => !isOpen)
+            }
+            selectionSummary={selectionSummary}
+            suggestedTags={suggestedTags}
+            suggestedTodos={suggestedTodos}
+          />
           )}
 
           {isTagsOpen && (
-          <div className="tag-editor">
-            <div className="tag-list">
-              {getWorkspaceTags(selectedWorkspace).map((tag) => (
-                <span className="editable-tag" key={tag}>
-                  #{tag}
-                  <button
-                    onClick={() => removeWorkspaceTag(tag)}
-                    aria-label={`Remove ${tag} tag`}
-                  >
-                    <FiX />
-                  </button>
-                </span>
-              ))}
-
-              {getWorkspaceTags(selectedWorkspace).length === 0 && (
-                <span className="tag-placeholder">
-                  No tags yet
-                </span>
-              )}
-            </div>
-
-            <div className="tag-input-row">
-              <FiTag />
-              <input
-                value={newTag}
-                onChange={(e) => setNewTag(e.target.value)}
-                onKeyDown={handleTagKeyDown}
-                placeholder="Add tag..."
-              />
-              <button onClick={addWorkspaceTag}>
-                <FiPlus />
-              </button>
-            </div>
-          </div>
+          <TagsDrawer
+            newTag={newTag}
+            onAddTag={addWorkspaceTag}
+            onNewTagChange={setNewTag}
+            onRemoveTag={removeWorkspaceTag}
+            onTagKeyDown={handleTagKeyDown}
+            workspace={selectedWorkspace}
+          />
           )}
 
-          <div className="notes-header">
-            <h2>Notes</h2>
-
-            <div className="notes-header-actions">
-              <span className="save-status">
-                {saveStatus}
-              </span>
-            </div>
-          </div>
-
-          <div className="rich-text-toolbar">
-            <button
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => applyRichTextCommand("bold")}
-              title="Bold"
-              aria-label="Bold"
-            >
-              <FiBold />
-            </button>
-
-            <button
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => applyRichTextCommand("italic")}
-              title="Italic"
-              aria-label="Italic"
-            >
-              <FiItalic />
-            </button>
-
-            <button
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => applyRichTextCommand("underline")}
-              title="Underline"
-              aria-label="Underline"
-            >
-              <FiUnderline />
-            </button>
-
-            <button
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() =>
-                applyRichTextCommand("insertUnorderedList")
-              }
-              title="Bullet list"
-              aria-label="Bullet list"
-            >
-              <FiList />
-            </button>
-
-            <button
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() =>
-                applyRichTextCommand("insertOrderedList")
-              }
-              title="Numbered list"
-              aria-label="Numbered list"
-            >
-              <FiHash />
-            </button>
-
-            <button
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={insertCodeSnippet}
-              title="Code snippet"
-              aria-label="Code snippet"
-            >
-              <FiCode />
-            </button>
-
-            <span className="toolbar-divider" />
-
-            <button
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => applyRichTextCommand("justifyLeft")}
-              title="Align left"
-              aria-label="Align left"
-            >
-              <FiAlignLeft />
-            </button>
-
-            <button
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => applyRichTextCommand("justifyCenter")}
-              title="Align center"
-              aria-label="Align center"
-            >
-              <FiAlignCenter />
-            </button>
-
-            <button
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => applyRichTextCommand("justifyRight")}
-              title="Align right"
-              aria-label="Align right"
-            >
-              <FiAlignRight />
-            </button>
-          </div>
-
-          <div
-            ref={notesEditorRef}
-            className="notes-area rich-notes-area"
-            contentEditable
-            suppressContentEditableWarning
-            data-placeholder="Write your notes here..."
-            onInput={saveNoteFromEditor}
-            onBlur={cleanEmptyNote}
-            onPaste={handleNotesPaste}
+          <NotesEditor
+            notesEditorRef={notesEditorRef}
+            onApplyRichTextCommand={applyRichTextCommand}
+            onCleanEmptyNote={cleanEmptyNote}
+            onInsertCodeSnippet={insertCodeSnippet}
+            onNotesInput={saveNoteFromEditor}
+            onNotesPaste={handleNotesPaste}
+            saveStatus={saveStatus}
           />
 
-          <div className="todo-header">
-            <h2>Todos</h2>
-            <span>
-              {getTodoProgress(selectedWorkspace.todos).label}
-            </span>
-          </div>
-
-          <div className="todo-input-row">
-            <input
-              type="text"
-              placeholder="Add a todo..."
-              value={newTodo}
-              onChange={(e) =>
-                setNewTodo(e.target.value)
-              }
-              onKeyDown={handleTodoKeyDown}
-              className="todo-input"
-            />
-
-            <button
-              className="add-todo-btn"
-              onClick={addTodo}
-            >
-              <FiPlus />
-            </button>
-          </div>
-
-          <DragDropContext onDragEnd={reorderTodos}>
-            <Droppable droppableId="todo-list">
-              {(provided) => (
-                <div
-                  className="todo-list"
-                  ref={provided.innerRef}
-                  {...provided.droppableProps}
-                >
-                  {!selectedWorkspace.todos?.length && (
-                    <p className="empty-text">
-                      No todos yet
-                    </p>
-                  )}
-
-                  {selectedWorkspace.todos?.map(
-                    (todo, index) => (
-                      <Draggable
-                        key={
-                          todo.id ||
-                          `${selectedWorkspace.id}-${index}`
-                        }
-                        draggableId={
-                          todo.id ||
-                          `${selectedWorkspace.id}-${index}`
-                        }
-                        index={index}
-                      >
-                        {(dragProvided, snapshot) => (
-                          <div
-                            ref={dragProvided.innerRef}
-                            {...dragProvided.draggableProps}
-                            {...dragProvided.dragHandleProps}
-                            className={`todo-item ${
-                              todo.done ? "todo-done" : ""
-                            } ${
-                              snapshot.isDragging
-                                ? "todo-dragging"
-                                : ""
-                            }`}
-                          >
-                            <button
-                              className="todo-check"
-                              onClick={() =>
-                                toggleTodo(index)
-                              }
-                            >
-                              {todo.done && <FiCheck />}
-                            </button>
-
-                            <input
-                              className="todo-text-input"
-                              value={todo.text}
-                              onChange={(e) =>
-                                updateTodoText(index, e.target.value)
-                              }
-                              onBlur={(e) =>
-                                normalizeTodoText(
-                                  index,
-                                  e.target.value
-                                )
-                              }
-                              onKeyDown={(e) => {
-                                if (e.key === "Enter") {
-                                  e.currentTarget.blur();
-                                }
-                              }}
-                              onPointerDown={(e) => e.stopPropagation()}
-                              aria-label="Todo text"
-                            />
-
-                            <button
-                              className="todo-delete"
-                              onClick={() =>
-                                removeTodo(index)
-                              }
-                            >
-                              <FiTrash2 />
-                            </button>
-                          </div>
-                        )}
-                      </Draggable>
-                    )
-                  )}
-
-                  {provided.placeholder}
-                </div>
-              )}
-            </Droppable>
-          </DragDropContext>
+          <TodoList
+            newTodo={newTodo}
+            onAddTodo={addTodo}
+            onNewTodoChange={setNewTodo}
+            onRemoveTodo={removeTodo}
+            onReorderTodos={reorderTodos}
+            onTodoInputKeyDown={handleTodoKeyDown}
+            onTodoTextBlur={normalizeTodoText}
+            onTodoTextChange={updateTodoText}
+            onToggleTodo={toggleTodo}
+            selectedWorkspace={selectedWorkspace}
+          />
 
         </div>
       )}
