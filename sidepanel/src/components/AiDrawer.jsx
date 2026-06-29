@@ -1,10 +1,4 @@
-import {
-  FiBookOpen,
-  FiCheck,
-  FiPlus,
-  FiSettings,
-  FiTag
-} from "react-icons/fi";
+import { FiBookOpen, FiCheck, FiSettings, FiTag } from "react-icons/fi";
 
 function AiDrawer({
   aiModels,
@@ -12,32 +6,19 @@ function AiDrawer({
   aiSettingsStatus,
   isAiConfigOpen,
   isAiConfigured,
-  isExtractingTodos,
-  isSuggestingTags,
-  isSummarizingSelection,
   isTestingAiConnection,
-  onAcceptSuggestedTag,
-  onAcceptSuggestedTodo,
   onAiSettingsChange,
   onClearAiSettings,
-  onDismissSelectionSummary,
-  onExtractTodos,
-  onInsertSelectionSummary,
   onSaveAiSettings,
-  onSuggestTags,
-  onSummarizeSelection,
   onTestAiConnection,
-  onToggleConfig,
-  selectionSummary,
-  suggestedTags,
-  suggestedTodos
+  onToggleConfig
 }) {
   return (
     <div className="ai-settings-panel">
       <div className="ai-settings-header">
         <div>
           <h3>AI</h3>
-          <p>Use your own provider key for optional actions.</p>
+          <p>Configure your own provider key and use AI where you work.</p>
         </div>
 
         <button className="ai-config-toggle" onClick={onToggleConfig}>
@@ -46,74 +27,21 @@ function AiDrawer({
         </button>
       </div>
 
-      <div className="ai-actions-panel">
-        <button
-          className="ai-action-btn"
-          onClick={onSuggestTags}
-          disabled={isSuggestingTags}
-        >
+      <div className="ai-help-list">
+        <div>
           <FiTag />
-          {isSuggestingTags ? "Suggesting..." : "Suggest Tags"}
-        </button>
+          <span>Suggest Tags appears inside the tags drawer.</span>
+        </div>
 
-        {suggestedTags.length > 0 && (
-          <div className="suggested-tag-list">
-            {suggestedTags.map((tag) => (
-              <button
-                key={tag}
-                onClick={() => onAcceptSuggestedTag(tag)}
-              >
-                + #{tag}
-              </button>
-            ))}
-          </div>
-        )}
-
-        <button
-          className="ai-action-btn"
-          onClick={onExtractTodos}
-          disabled={isExtractingTodos}
-        >
+        <div>
           <FiCheck />
-          {isExtractingTodos ? "Extracting..." : "Extract Todos"}
-        </button>
+          <span>Extract Todos reads your notes and suggests todo items.</span>
+        </div>
 
-        {suggestedTodos.length > 0 && (
-          <div className="suggested-todo-list">
-            {suggestedTodos.map((todo) => (
-              <button
-                key={todo}
-                onClick={() => onAcceptSuggestedTodo(todo)}
-              >
-                <FiPlus />
-                {todo}
-              </button>
-            ))}
-          </div>
-        )}
-
-        <button
-          className="ai-action-btn"
-          onClick={onSummarizeSelection}
-          disabled={isSummarizingSelection}
-        >
+        <div>
           <FiBookOpen />
-          {isSummarizingSelection
-            ? "Summarizing..."
-            : "Summarize Selection"}
-        </button>
-
-        {selectionSummary && (
-          <div className="selection-summary-card">
-            <p>{selectionSummary}</p>
-            <div className="selection-summary-actions">
-              <button onClick={onInsertSelectionSummary}>
-                Insert into Notes
-              </button>
-              <button onClick={onDismissSelectionSummary}>Dismiss</button>
-            </div>
-          </div>
-        )}
+          <span>Summarize Selection adds selected webpage text to notes.</span>
+        </div>
       </div>
 
       {isAiConfigOpen && (

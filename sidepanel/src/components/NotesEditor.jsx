@@ -2,22 +2,36 @@ import {
   FiAlignCenter,
   FiAlignLeft,
   FiAlignRight,
+  FiBookOpen,
   FiBold,
+  FiCheck,
   FiCode,
+  FiCpu,
   FiHash,
   FiItalic,
   FiList,
+  FiPlus,
   FiUnderline
 } from "react-icons/fi";
 
 function NotesEditor({
+  aiStatus,
+  isExtractingTodos,
+  isSummarizingSelection,
   notesEditorRef,
+  onAcceptSuggestedTodo,
   onApplyRichTextCommand,
   onCleanEmptyNote,
+  onDismissSelectionSummary,
+  onExtractTodos,
   onInsertCodeSnippet,
+  onInsertSelectionSummary,
   onNotesInput,
   onNotesPaste,
-  saveStatus
+  onSummarizeSelection,
+  saveStatus,
+  selectionSummary,
+  suggestedTodos
 }) {
   return (
     <>
@@ -114,6 +128,28 @@ function NotesEditor({
         >
           <FiAlignRight />
         </button>
+
+        <span className="toolbar-divider" />
+
+        <button
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={onExtractTodos}
+          disabled={isExtractingTodos}
+          title="Extract todos"
+          aria-label="Extract todos from notes"
+        >
+          {isExtractingTodos ? <FiCpu /> : <FiCheck />}
+        </button>
+
+        <button
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={onSummarizeSelection}
+          disabled={isSummarizingSelection}
+          title="Summarize selected page text"
+          aria-label="Summarize selected page text"
+        >
+          {isSummarizingSelection ? <FiCpu /> : <FiBookOpen />}
+        </button>
       </div>
 
       <div
@@ -126,6 +162,34 @@ function NotesEditor({
         onBlur={onCleanEmptyNote}
         onPaste={onNotesPaste}
       />
+
+      {suggestedTodos.length > 0 && (
+        <div className="suggested-todo-list notes-ai-result">
+          {suggestedTodos.map((todo) => (
+            <button
+              key={todo}
+              onClick={() => onAcceptSuggestedTodo(todo)}
+            >
+              <FiPlus />
+              {todo}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {selectionSummary && (
+        <div className="selection-summary-card notes-ai-result">
+          <p>{selectionSummary}</p>
+          <div className="selection-summary-actions">
+            <button onClick={onInsertSelectionSummary}>
+              Insert into Notes
+            </button>
+            <button onClick={onDismissSelectionSummary}>Dismiss</button>
+          </div>
+        </div>
+      )}
+
+      {aiStatus && <p className="inline-ai-status notes-ai-status">{aiStatus}</p>}
     </>
   );
 }

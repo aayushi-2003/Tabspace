@@ -42,7 +42,7 @@ Example response:
 
 export function buildExtractTodosPrompt(workspace) {
   return `
-Extract concise todo items from these workspace notes.
+Extract concise todo items only from these workspace notes.
 
 Rules:
 - Return a JSON array of strings only.
@@ -50,14 +50,13 @@ Rules:
 - Do not add explanation.
 - Each todo should be actionable and short.
 - Avoid duplicates.
+- Only use information present in the notes.
+- Do not infer todos from the workspace title or any existing todo list.
 - If there are no actionable todos, return [].
 
 Workspace title: ${workspace.title || ""}
 Notes:
 ${getPlainNoteText(workspace.note || "") || "none"}
-
-Existing todos:
-${(workspace.todos || []).map((todo) => todo.text).join("; ") || "none"}
 
 Example response:
 ["review documentation","compare pricing options"]

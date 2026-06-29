@@ -721,6 +721,7 @@ body {
   gap: 10px;
   margin: -4px 0 16px;
   padding: 10px;
+  text-align: left;
 }
 
 .ai-settings-header {
@@ -728,6 +729,11 @@ body {
   align-items: flex-start;
   justify-content: space-between;
   gap: 10px;
+  text-align: left;
+}
+
+.ai-settings-header > div {
+  min-width: 0;
 }
 
 .ai-settings-header h3 {
@@ -743,6 +749,7 @@ body {
   color: #a8b3cf;
   font-size: 11px;
   line-height: 1.4;
+  text-align: left;
 }
 
 .ai-config-toggle {
@@ -763,6 +770,32 @@ body {
 .ai-config-toggle:hover {
   border-color: #6a31cb;
   color: white;
+}
+
+.ai-help-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ai-help-list div {
+  background: #0b162d;
+  border: 1px solid #32405f;
+  border-radius: 8px;
+  color: #a8b3cf;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 12px;
+  line-height: 1.35;
+  padding: 8px 9px;
+  text-align: left;
+}
+
+.ai-help-list svg {
+  color: #c4b5fd;
+  flex: 0 0 auto;
+  margin-top: 1px;
 }
 
 .ai-status-pill {
@@ -843,6 +876,39 @@ body {
 .ai-action-btn:disabled {
   cursor: not-allowed;
   opacity: 0.65;
+}
+
+.inline-ai-btn {
+  background: #1a2744;
+  border: 1px solid #32405f;
+  border-radius: 8px;
+  color: #d8def0;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 8px 10px;
+  text-align: left;
+}
+
+.inline-ai-btn:hover {
+  border-color: #6a31cb;
+  color: white;
+}
+
+.inline-ai-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+.inline-ai-status {
+  color: #a8b3cf;
+  font-size: 11px;
+  line-height: 1.35;
+  text-align: left;
 }
 
 .suggested-tag-list {
@@ -1141,15 +1207,23 @@ body {
   color: white;
 }
 
+.rich-text-toolbar button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
 .rich-text-toolbar {
   background: #102041;
   border: 1px solid #32405f;
   border-radius: 8px;
-  display: inline-flex;
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 2px;
   margin-bottom: 8px;
   padding: 3px;
+  width: fit-content;
+  max-width: 100%;
 }
 
 .toolbar-divider {
@@ -1188,6 +1262,18 @@ body {
   color: #7f8ba8;
   content: attr(data-placeholder);
   pointer-events: none;
+}
+
+.notes-ai-result {
+  margin: -12px 0 20px;
+}
+
+.notes-ai-result + .notes-ai-result {
+  margin-top: -10px;
+}
+
+.notes-ai-status {
+  margin: -12px 0 18px;
 }
 
 .rich-notes-area ul,

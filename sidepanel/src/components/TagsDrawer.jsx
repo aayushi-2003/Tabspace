@@ -1,15 +1,20 @@
-import { FiPlus, FiTag, FiX } from "react-icons/fi";
+import { FiCpu, FiPlus, FiTag, FiX } from "react-icons/fi";
 
 import {
   getWorkspaceTags
 } from "../lib/workspaceUtils";
 
 function TagsDrawer({
+  aiStatus,
+  isSuggestingTags,
   newTag,
   onAddTag,
+  onAcceptSuggestedTag,
   onNewTagChange,
   onRemoveTag,
+  onSuggestTags,
   onTagKeyDown,
+  suggestedTags,
   workspace
 }) {
   const tags = getWorkspaceTags(workspace);
@@ -46,6 +51,30 @@ function TagsDrawer({
           <FiPlus />
         </button>
       </div>
+
+      <button
+        className="inline-ai-btn"
+        onClick={onSuggestTags}
+        disabled={isSuggestingTags}
+      >
+        <FiCpu />
+        {isSuggestingTags ? "Suggesting..." : "Suggest Tags"}
+      </button>
+
+      {suggestedTags.length > 0 && (
+        <div className="suggested-tag-list">
+          {suggestedTags.map((tag) => (
+            <button
+              key={tag}
+              onClick={() => onAcceptSuggestedTag(tag)}
+            >
+              + #{tag}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {aiStatus && <p className="inline-ai-status">{aiStatus}</p>}
     </div>
   );
 }

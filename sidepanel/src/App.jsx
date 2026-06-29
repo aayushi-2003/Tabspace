@@ -130,6 +130,14 @@ function formatLastSyncAt(value) {
   }).format(new Date(value));
 }
 
+function normalizeTodoForComparison(text) {
+  return String(text)
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s]/gu, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function App() {
   const [tabData, setTabData] = useState(null);
   const [loadError, setLoadError] = useState("");
@@ -173,6 +181,21 @@ function App() {
   const aiModels =
     AI_MODELS_BY_PROVIDER[aiSettings.provider] ||
     AI_MODELS_BY_PROVIDER.groq;
+  const tagAiStatus = /tag/i.test(aiSettingsStatus)
+    ? aiSettingsStatus
+    : "";
+  const notesAiStatus =
+    /(todo|selection|notes|summarize|summarizing|tabspace)/i.test(
+      aiSettingsStatus
+    )
+      ? aiSettingsStatus
+      : "";
+  const settingsAiStatus =
+    /(setting|connection|connected|provider|unexpected|failed|saved|cleared|testing)/i.test(
+      aiSettingsStatus
+    )
+      ? aiSettingsStatus
+      : "";
 
   const filteredWorkspaces = useMemo(() => {
     return workspaces.filter((workspace) =>
@@ -710,8 +733,10 @@ function App() {
         ...aiSettings,
         apiKey: aiSettings.apiKey.trim()
       });
-      const existingTodoTexts = (selectedWorkspace.todos || []).map((todo) =>
-        todo.text.trim().toLowerCase()
+      const existingTodoTexts = new Set(
+        (selectedWorkspace.todos || []).map((todo) =>
+          normalizeTodoForComparison(todo.text)
+        )
       );
       const response = await generateAiText({
         settings: savedSettings,
@@ -723,10 +748,20 @@ function App() {
         }
       });
       const todos = parseSuggestedTodos(response)
+        .map((todo) => todo.trim())
+        .filter(Boolean)
         .filter(
-          (todo) => !existingTodoTexts.includes(todo.trim().toLowerCase())
+          (todo) =>
+            !existingTodoTexts.has(normalizeTodoForComparison(todo))
         )
-        .filter((todo, index, todoList) => todoList.indexOf(todo) === index)
+        .filter(
+          (todo, index, todoList) =>
+            todoList.findIndex(
+              (item) =>
+                normalizeTodoForComparison(item) ===
+                normalizeTodoForComparison(todo)
+            ) === index
+        )
         .slice(0, 8);
 
       setAiSettings(savedSettings);
@@ -1501,52 +1536,54 @@ function App() {
           <AiDrawer
             aiModels={aiModels}
             aiSettings={aiSettings}
-            aiSettingsStatus={aiSettingsStatus}
+            aiSettingsStatus={settingsAiStatus}
             isAiConfigOpen={isAiConfigOpen}
             isAiConfigured={isAiConfigured}
-            isExtractingTodos={isExtractingTodos}
-            isSuggestingTags={isSuggestingTags}
-            isSummarizingSelection={isSummarizingSelection}
             isTestingAiConnection={isTestingAiConnection}
-            onAcceptSuggestedTag={acceptSuggestedTag}
-            onAcceptSuggestedTodo={acceptSuggestedTodo}
             onAiSettingsChange={handleAiSettingsChange}
             onClearAiSettings={handleClearAiSettings}
-            onDismissSelectionSummary={() => setSelectionSummary("")}
-            onExtractTodos={handleExtractTodos}
-            onInsertSelectionSummary={insertSelectionSummary}
             onSaveAiSettings={handleSaveAiSettings}
-            onSuggestTags={handleSuggestTags}
-            onSummarizeSelection={handleSummarizeSelection}
             onTestAiConnection={handleTestAiConnection}
             onToggleConfig={() =>
               setIsAiConfigOpen((isOpen) => !isOpen)
             }
-            selectionSummary={selectionSummary}
-            suggestedTags={suggestedTags}
-            suggestedTodos={suggestedTodos}
           />
           )}
 
           {isTagsOpen && (
           <TagsDrawer
+            aiStatus={tagAiStatus}
+            isSuggestingTags={isSuggestingTags}
             newTag={newTag}
             onAddTag={addWorkspaceTag}
+            onAcceptSuggestedTag={acceptSuggestedTag}
             onNewTagChange={setNewTag}
             onRemoveTag={removeWorkspaceTag}
+            onSuggestTags={handleSuggestTags}
             onTagKeyDown={handleTagKeyDown}
+            suggestedTags={suggestedTags}
             workspace={selectedWorkspace}
           />
           )}
 
           <NotesEditor
+            aiStatus={notesAiStatus}
+            isExtractingTodos={isExtractingTodos}
+            isSummarizingSelection={isSummarizingSelection}
             notesEditorRef={notesEditorRef}
+            onAcceptSuggestedTodo={acceptSuggestedTodo}
             onApplyRichTextCommand={applyRichTextCommand}
             onCleanEmptyNote={cleanEmptyNote}
+            onDismissSelectionSummary={() => setSelectionSummary("")}
+            onExtractTodos={handleExtractTodos}
             onInsertCodeSnippet={insertCodeSnippet}
+            onInsertSelectionSummary={insertSelectionSummary}
             onNotesInput={saveNoteFromEditor}
             onNotesPaste={handleNotesPaste}
+            onSummarizeSelection={handleSummarizeSelection}
             saveStatus={saveStatus}
+            selectionSummary={selectionSummary}
+            suggestedTodos={suggestedTodos}
           />
 
           <TodoList
